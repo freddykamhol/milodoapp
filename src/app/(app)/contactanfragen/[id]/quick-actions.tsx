@@ -126,7 +126,7 @@ export default function ContactInquiryActions(props: { inquiryId: number; email:
 
       {forwardOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/0 backdrop-blur-2xl backdrop-saturate-150 p-4"
           role="dialog"
           aria-modal="true"
           aria-label="Weiterleiten"
@@ -175,7 +175,7 @@ export default function ContactInquiryActions(props: { inquiryId: number; email:
 
       {replyOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/0 backdrop-blur-2xl backdrop-saturate-150 p-4"
           role="dialog"
           aria-modal="true"
           aria-label="Antworten"

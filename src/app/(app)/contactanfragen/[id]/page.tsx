@@ -27,6 +27,10 @@ function modeLabel(mode: string) {
   return "Kontakt";
 }
 
+function statusLabel(status: "NEW" | "DONE") {
+  return status === "DONE" ? "ERLEDIGT" : "NEU";
+}
+
 export default async function ContactInquiryDetailPage(props: { params: Promise<{ id: string }> }) {
   const viewer = await getViewer();
   if (!viewer) redirect("/login");
@@ -98,7 +102,7 @@ export default async function ContactInquiryDetailPage(props: { params: Promise<
   return (
     <AppShell
       title={`Kontaktanfrage #${row.id}`}
-      subtitle={`${modeLabel(row.mode)} · ${row.status} · ${row.createdAt ? new Date(row.createdAt).toLocaleString("de-DE") : ""}`}
+      subtitle={`${modeLabel(row.mode)} · ${statusLabel(row.status)} · ${row.createdAt ? new Date(row.createdAt).toLocaleString("de-DE") : ""}`}
     >
       <div className="grid gap-4">
         <div className="flex items-center justify-between gap-3">
@@ -151,4 +155,3 @@ export default async function ContactInquiryDetailPage(props: { params: Promise<
     </AppShell>
   );
 }
-

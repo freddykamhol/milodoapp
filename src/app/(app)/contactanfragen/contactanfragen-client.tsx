@@ -20,6 +20,10 @@ type Item = {
 
 type Sort = "newest" | "oldest";
 
+function statusLabel(status: "NEW" | "DONE") {
+  return status === "DONE" ? "ERLEDIGT" : "NEU";
+}
+
 function modeLabel(mode: string) {
   const m = (mode || "").toLowerCase();
   if (m === "eh") return "EH-Ausbildung";
@@ -217,7 +221,7 @@ export default function ContactAnfragenClient() {
                   {modeLabel(row.mode)}
                 </span>
                 <span className="rounded-full border border-[var(--border)] bg-white px-2 py-1">
-                  {row.status}
+                  {statusLabel(row.status)}
                 </span>
               </div>
             </div>
