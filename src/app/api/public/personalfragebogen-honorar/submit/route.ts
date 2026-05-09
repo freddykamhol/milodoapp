@@ -336,7 +336,21 @@ export async function POST(request: Request) {
   const blz = String(form.get("blz") ?? "").trim();
 
   const einsatzfelder = parseJsonArray(form.get("einsatzfelderJson"));
-  const qualMed = String(form.get("qualMed") ?? "").trim() || null;
+  const qualMedRaw = String(form.get("qualMed") ?? "").trim();
+  const allowedQualMed = [
+    "ERSTHELFER",
+    "SANITAETER",
+    "RETTUNGSHELFER",
+    "RETTUNGSSANITAETER",
+    "RETTUNGSASSISTENT",
+    "NOTFALLSANITAETER",
+  ] as const;
+  const qualMed = (allowedQualMed as readonly string[]).includes(qualMedRaw)
+    ? (qualMedRaw as (typeof allowedQualMed)[number])
+    : (qualMedRaw ? null : null);
+  if (qualMedRaw && !qualMed) {
+    return NextResponse.json({ ok: false, error: "qual_med_invalid" }, { status: 400 });
+  }
   const qualEhAusbilder = parseBool(form.get("qualEhAusbilder"));
 
   const sizes = parseJsonObject(form.get("sizesJson"));
