@@ -37,6 +37,7 @@ function navItemsFor(role: ViewerRole | null) {
     { label: "Termine / Dienste", href: "/appointments" },
     { label: "Kunden", href: "/customers" },
     { label: "Anforderungen", href: "/requirements" },
+    { label: "Kontaktanfragen", href: "/contactanfragen" },
     { label: "Mitglieder", href: "/members" },
     { label: "Dokumente", href: "/documents" },
     { label: "Stunden", href: "/hours" },

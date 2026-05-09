@@ -193,7 +193,7 @@ export default function ContactAnfragenClient() {
                 <div className="flex flex-wrap items-center gap-2">
                   {!row.readAt ? (
                     <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-white px-2.5 py-1 text-xs font-semibold text-[color:var(--muted)]">
-                      Neu
+                      NEU
                     </span>
                   ) : null}
                   <span className="text-xs font-semibold tracking-wide text-[color:var(--muted)]">

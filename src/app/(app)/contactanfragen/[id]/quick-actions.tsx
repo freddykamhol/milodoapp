@@ -7,19 +7,16 @@ function norm(value: string) {
   return String(value ?? "").trim();
 }
 
-function mailtoForReply(to: string, mode: string, id: number) {
-  const subject = `Re: Kontaktanfrage #${id} (${mode})`;
-  const body = `Hallo,\n\nvielen Dank für deine Anfrage.\n\n—\nMilodo Medical`;
-  const params = new URLSearchParams({ subject, body }).toString();
-  return `mailto:${encodeURIComponent(to)}?${params}`;
-}
-
 export default function ContactInquiryActions(props: { inquiryId: number; email: string; ip: string; mode: string }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
   const [forwardOpen, setForwardOpen] = React.useState(false);
   const [forwardTo, setForwardTo] = React.useState("");
   const [forwardError, setForwardError] = React.useState<string | null>(null);
+  const [replyOpen, setReplyOpen] = React.useState(false);
+  const [replySubject, setReplySubject] = React.useState(`Re: Kontaktanfrage #${props.inquiryId} (${props.mode})`);
+  const [replyMessage, setReplyMessage] = React.useState("Hallo,\n\nvielen Dank für deine Anfrage.\n\n—\nMilodo Medical");
+  const [replyError, setReplyError] = React.useState<string | null>(null);
 
   async function doDelete() {
     if (!confirm("Kontaktanfrage wirklich löschen?")) return;
@@ -72,14 +69,34 @@ export default function ContactInquiryActions(props: { inquiryId: number; email:
     }
   }
 
+  async function doReply() {
+    setBusy("reply");
+    setReplyError(null);
+    try {
+      const res = await fetch(`/api/contact-inquiries/${props.inquiryId}/reply`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ subject: norm(replySubject), message: norm(replyMessage) }),
+      });
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!res.ok || !json?.ok) throw new Error(json?.error ?? "reply_failed");
+      setReplyOpen(false);
+    } catch (e) {
+      setReplyError(e instanceof Error ? e.message : "reply_failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <a
+      <button
+        type="button"
+        onClick={() => setReplyOpen(true)}
         className="inline-flex h-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-semibold hover:bg-[var(--surface-2)]"
-        href={mailtoForReply(props.email, props.mode, props.inquiryId)}
       >
-        Antworten
-      </a>
+        Antworten…
+      </button>
 
       <button
         type="button"
@@ -108,7 +125,15 @@ export default function ContactInquiryActions(props: { inquiryId: number; email:
       </button>
 
       {forwardOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Weiterleiten"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setForwardOpen(false);
+          }}
+        >
           <div className="w-full max-w-lg rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow)]">
             <div className="text-lg font-semibold tracking-tight">Weiterleiten</div>
             <p className="mt-2 text-sm text-[color:var(--muted)]">
@@ -147,7 +172,75 @@ export default function ContactInquiryActions(props: { inquiryId: number; email:
           </div>
         </div>
       ) : null}
+
+      {replyOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Antworten"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setReplyOpen(false);
+          }}
+        >
+          <div className="w-full max-w-2xl rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow)]">
+            <div className="text-lg font-semibold tracking-tight">Antworten</div>
+            <p className="mt-2 text-sm text-[color:var(--muted)]">
+              Versand erfolgt über die SMTP-Einstellungen im Portal.
+            </p>
+
+            <div className="mt-4 grid gap-3">
+              <div className="grid gap-1">
+                <div className="text-xs font-semibold tracking-wide text-[color:var(--muted)]">An</div>
+                <input
+                  className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-4 text-sm outline-none"
+                  value={props.email}
+                  readOnly
+                />
+              </div>
+              <div className="grid gap-1">
+                <div className="text-xs font-semibold tracking-wide text-[color:var(--muted)]">Betreff</div>
+                <input
+                  className="h-11 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-4 text-sm outline-none focus:border-[color:var(--ring)]"
+                  value={replySubject}
+                  onChange={(e) => setReplySubject(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-1">
+                <div className="text-xs font-semibold tracking-wide text-[color:var(--muted)]">Nachricht</div>
+                <textarea
+                  className="min-h-40 rounded-3xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-sm outline-none focus:border-[color:var(--ring)]"
+                  value={replyMessage}
+                  onChange={(e) => setReplyMessage(e.target.value)}
+                />
+              </div>
+              {replyError ? <div className="text-sm text-red-700">Fehler: {replyError}</div> : null}
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setReplyOpen(false);
+                  setReplyError(null);
+                }}
+                className="inline-flex h-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-semibold hover:bg-[var(--surface-2)]"
+                disabled={busy === "reply"}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={() => void doReply()}
+                disabled={busy === "reply" || !norm(replySubject) || !norm(replyMessage)}
+                className="inline-flex h-10 items-center justify-center rounded-2xl bg-[color:var(--accent)] px-4 text-sm font-semibold text-white shadow-[var(--shadow-soft)] hover:opacity-90 disabled:opacity-50"
+              >
+                {busy === "reply" ? "Sende…" : "Antwort senden"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
-
