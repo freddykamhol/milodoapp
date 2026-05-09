@@ -886,10 +886,16 @@ export const contactInquiries = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    readAt: integer("read_at", { mode: "timestamp_ms" }),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
 
     status: text("status", { enum: ["NEW", "DONE"] }).notNull().default("NEW"),
     source: text("source").notNull().default("website"),
     sourceUrl: text("source_url").notNull().default(""),
+    ip: text("ip").notNull().default(""),
+    userAgent: text("user_agent").notNull().default(""),
+    recaptchaScoreBp: integer("recaptcha_score_bp"),
+    recaptchaAction: text("recaptcha_action").notNull().default(""),
 
     mode: text("mode").notNull().default("kontakt"),
     name: text("name").notNull().default(""),
@@ -904,6 +910,8 @@ export const contactInquiries = sqliteTable(
   },
   (table) => [
     index("contact_inquiries_created_at_idx").on(table.createdAt),
+    index("contact_inquiries_read_at_idx").on(table.readAt),
+    index("contact_inquiries_deleted_at_idx").on(table.deletedAt),
     index("contact_inquiries_status_idx").on(table.status),
     index("contact_inquiries_email_idx").on(table.email),
   ],

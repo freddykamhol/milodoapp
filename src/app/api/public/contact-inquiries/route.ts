@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { contactInquiries } from "@/db/schema";
 import { sendContactInquiryEmail } from "@/lib/contact-inquiry-email";
 import { ensureContactInquiriesTable } from "@/lib/contact-inquiries";
+import { isIpBlocked } from "@/lib/ip-blocklist";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,8 @@ type Payload = {
   details?: unknown;
   privacyConsent?: unknown;
   sourceUrl?: unknown;
+  recaptchaToken?: unknown;
+  recaptchaAction?: unknown;
 };
 
 function norm(v: unknown, max = 4000) {
@@ -64,6 +67,46 @@ function norm(v: unknown, max = 4000) {
 
 function asBool(v: unknown) {
   return v === true || v === 1 || v === "1" || v === "true";
+}
+
+function requestIp(request: Request): string {
+  const xfwd = String(request.headers.get("x-forwarded-for") ?? "").trim();
+  if (xfwd) return xfwd.split(",")[0]!.trim();
+  const real = String(request.headers.get("x-real-ip") ?? "").trim();
+  if (real) return real;
+  const cf = String(request.headers.get("cf-connecting-ip") ?? "").trim();
+  if (cf) return cf;
+  return "";
+}
+
+async function verifyRecaptcha(token: string, action: string): Promise<{ ok: boolean; scoreBp: number | null }> {
+  const secret = String(process.env.RECAPTCHA_SECRET_KEY ?? "").trim();
+  if (!secret) return { ok: true, scoreBp: null }; // allow if not configured
+  const t = String(token ?? "").trim();
+  if (!t) return { ok: false, scoreBp: null };
+
+  const params = new URLSearchParams();
+  params.set("secret", secret);
+  params.set("response", t);
+
+  const res = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+
+  const json = (await res.json().catch(() => null)) as
+    | { success?: boolean; score?: number; action?: string }
+    | null;
+  const ok = Boolean(json?.success);
+  const score = typeof json?.score === "number" ? json.score : null;
+  const scoreBp = score === null ? null : Math.max(0, Math.min(1000, Math.round(score * 1000)));
+  if (!ok) return { ok: false, scoreBp };
+  if (action && json?.action && String(json.action) !== action) return { ok: false, scoreBp };
+
+  const min = Number(process.env.RECAPTCHA_MIN_SCORE ?? "0.3");
+  if (score !== null && Number.isFinite(min) && score < min) return { ok: false, scoreBp };
+  return { ok: true, scoreBp };
 }
 
 export async function POST(request: Request) {
@@ -94,15 +137,27 @@ export async function POST(request: Request) {
 
   ensureContactInquiriesTable();
 
+  const ip = requestIp(request);
+  if (ip && isIpBlocked(ip)) return json(403, { ok: false, error: "ip_blocked" }, origin);
+
+  const recaptchaToken = norm(body.recaptchaToken, 8000);
+  const recaptchaAction = norm(body.recaptchaAction, 64);
+  const recaptcha = await verifyRecaptcha(recaptchaToken, recaptchaAction);
+  if (!recaptcha.ok) return json(400, { ok: false, error: "recaptcha_failed" }, origin);
+
   const now = new Date();
   const inserted = await db
     .insert(contactInquiries)
     .values({
       createdAt: now,
       updatedAt: now,
+      readAt: null,
+      deletedAt: null,
       status: "NEW",
       source: "website",
       sourceUrl,
+      ip,
+      userAgent: String(request.headers.get("user-agent") ?? "").slice(0, 600),
       mode,
       name,
       company,
@@ -112,6 +167,8 @@ export async function POST(request: Request) {
       detailsJson,
       privacyConsent: true,
       privacyConsentAt: now,
+      recaptchaScoreBp: recaptcha.scoreBp,
+      recaptchaAction,
     })
     .returning({ id: contactInquiries.id });
 

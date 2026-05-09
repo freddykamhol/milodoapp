@@ -5,6 +5,23 @@ declare global {
   var __milodo_contact_inquiries_ready: boolean | undefined;
 }
 
+type ColumnDef = { name: string; sql: string };
+
+function existingColumns(table: string): Set<string> {
+  const rows = sqlite
+    .prepare(`PRAGMA table_info(${table})`)
+    .all() as Array<{ name?: unknown }>;
+  return new Set(rows.map((r) => String(r.name ?? "")).filter(Boolean));
+}
+
+function addMissingColumns(table: string, columns: ColumnDef[]) {
+  const existing = existingColumns(table);
+  for (const col of columns) {
+    if (existing.has(col.name)) continue;
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${col.sql};`);
+  }
+}
+
 export function ensureContactInquiriesTable() {
   if (globalThis.__milodo_contact_inquiries_ready) return;
 
@@ -31,6 +48,17 @@ export function ensureContactInquiriesTable() {
     CREATE INDEX IF NOT EXISTS contact_inquiries_email_idx ON contact_inquiries(email);
   `);
 
+  addMissingColumns("contact_inquiries", [
+    { name: "read_at", sql: "read_at INTEGER" },
+    { name: "deleted_at", sql: "deleted_at INTEGER" },
+    { name: "ip", sql: "ip TEXT NOT NULL DEFAULT ''" },
+    { name: "user_agent", sql: "user_agent TEXT NOT NULL DEFAULT ''" },
+    // store score * 1000 as integer (0-1000) to avoid float surprises
+    { name: "recaptcha_score_bp", sql: "recaptcha_score_bp INTEGER" },
+    { name: "recaptcha_action", sql: "recaptcha_action TEXT NOT NULL DEFAULT ''" },
+  ]);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS contact_inquiries_read_at_idx ON contact_inquiries(read_at);`);
+  sqlite.exec(`CREATE INDEX IF NOT EXISTS contact_inquiries_deleted_at_idx ON contact_inquiries(deleted_at);`);
+
   globalThis.__milodo_contact_inquiries_ready = true;
 }
-
