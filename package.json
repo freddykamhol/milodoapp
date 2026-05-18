@@ -4,12 +4,19 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:server": "node server.js",
     "build": "next build --webpack",
     "start": "next start",
+    "start:server": "node server.js",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:introspect": "drizzle-kit introspect",
+    "db:check": "drizzle-kit check",
+    "db:up": "drizzle-kit up",
+    "db:drop": "drizzle-kit drop",
     "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
