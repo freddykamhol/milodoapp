@@ -6,10 +6,10 @@
     "node": ">=20.20.2 <21"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H localhost",
     "dev:server": "node server.js",
     "build": "next build --webpack",
-    "start": "next start",
+    "start": "next start -H 0.0.0.0",
     "start:server": "node server.js",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
