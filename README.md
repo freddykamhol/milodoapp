@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-## Production (Node 20.20.2)
+## Production (Node 20.x)
 
 Wichtig: Dieses Projekt nutzt `better-sqlite3` (native Addon). Daher **auf dem Server** mit der Server-Node-Version installieren (nicht `node_modules` vom lokalen Rechner kopieren).
 
@@ -18,7 +18,7 @@ Wichtig: Dieses Projekt nutzt `better-sqlite3` (native Addon). Daher **auf dem S
 git clone https://github.com/freddykamhol/milodoapp.git
 cd milodoapp
 
-# Node 20.20.2 aktivieren (nvm/volta/whatever) und dann:
+# Node 20.x aktivieren (nvm/volta/whatever) und dann:
 npm ci
 
 # Env setzen (Beispiel)
