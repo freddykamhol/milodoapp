@@ -30,3 +30,10 @@ npm run db:migrate
 npm run build
 npm run start   # oder: npm run start:server
 ```
+
+### Database bootstrap
+
+```bash
+# creates/updates schema and inserts demo seed data (demo user + demo appointments)
+npm run db:bootstrap
+```
