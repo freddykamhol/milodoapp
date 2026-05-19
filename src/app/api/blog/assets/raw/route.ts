@@ -3,6 +3,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 
 import { isSftpEnabled, withSftp } from "@/lib/sftp";
+import { getDataDir } from "@/lib/data-dir";
 import { getViewer } from "@/lib/viewer";
 
 export const runtime = "nodejs";
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
     if (!res) return NextResponse.json({ ok: false, error: "sftp_not_available" }, { status: 500 });
     bytes = res;
   } else {
-    const diskPath = path.join(process.cwd(), "data", key);
+    const diskPath = path.join(getDataDir(), key);
     bytes = await readFile(diskPath);
   }
 
@@ -46,4 +47,3 @@ export async function GET(request: Request) {
     },
   });
 }
-

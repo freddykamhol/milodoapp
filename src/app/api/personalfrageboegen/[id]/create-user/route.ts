@@ -12,6 +12,7 @@ import { buildUserRemoteDir, buildUserRemoteFilePath, isSftpEnabled, withSftp } 
 import { getViewer } from "@/lib/viewer";
 import { sendWelcomeEmail } from "@/lib/welcome-email";
 import { ensurePersonalfrageboegenSchema } from "@/lib/personalfrageboegen";
+import { getDataDir } from "@/lib/data-dir";
 
 export const runtime = "nodejs";
 
@@ -101,8 +102,8 @@ function splitExt(name: string) {
 }
 
 async function moveLocalFile({ fromKey, toUserId, storedName }: { fromKey: string; toUserId: number; storedName: string }) {
-  const fromPath = path.join(process.cwd(), "data", fromKey);
-  const dir = path.join(process.cwd(), "data", "uploads", String(toUserId));
+  const fromPath = path.join(getDataDir(), fromKey);
+  const dir = path.join(getDataDir(), "uploads", String(toUserId));
   await mkdir(dir, { recursive: true });
   const toPath = path.join(dir, storedName);
   try {

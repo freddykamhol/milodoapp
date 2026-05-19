@@ -6,6 +6,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { db } from "@/lib/db";
 import { personalQuestionnaireFiles, personalQuestionnaires } from "@/db/schema";
 import { isSftpEnabled, withSftp } from "@/lib/sftp";
+import { getDataDir } from "@/lib/data-dir";
 import { sql } from "drizzle-orm";
 import { renderPersonalfragebogenHonorarPdf } from "@/lib/personalfrageboegen-pdf";
 import { sendPersonalfragebogenConfirmationEmail } from "@/lib/personalfrageboegen-confirmation-email";
@@ -285,7 +286,7 @@ async function storeFile(questionnaireId: number, file: File) {
     });
     if (!res) throw new Error("sftp_not_available");
   } else {
-    const diskPath = path.join(process.cwd(), "data", storageKey);
+    const diskPath = path.join(getDataDir(), storageKey);
     await mkdir(path.dirname(diskPath), { recursive: true });
     await writeFile(diskPath, bytes);
   }

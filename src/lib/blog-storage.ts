@@ -3,6 +3,7 @@ import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 
 import { isSftpEnabled, withSftp } from "@/lib/sftp";
+import { getDataDir } from "@/lib/data-dir";
 
 function safeDirName(value: string) {
   return String(value || "")
@@ -72,7 +73,7 @@ export async function storeBlogAsset({
     });
     if (!res) throw new Error("sftp_not_available");
   } else {
-    const diskPath = path.join(process.cwd(), "data", storageKey);
+    const diskPath = path.join(getDataDir(), storageKey);
     await mkdir(path.dirname(diskPath), { recursive: true });
     await writeFile(diskPath, bytes);
   }
@@ -122,7 +123,7 @@ export async function writeBlogExport({
     });
     if (!res) throw new Error("sftp_not_available");
   } else {
-    const diskDir = path.join(process.cwd(), "data", baseDir);
+    const diskDir = path.join(getDataDir(), baseDir);
     await mkdir(diskDir, { recursive: true });
     await writeFile(path.join(diskDir, "post.json"), JSON.stringify(meta, null, 2), "utf8");
     await writeFile(path.join(diskDir, "content.md"), contentMd || "", "utf8");

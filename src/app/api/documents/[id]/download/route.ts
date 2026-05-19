@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { db } from "@/lib/db";
 import { buildUserRemoteFilePath, isSftpEnabled, withSftp } from "@/lib/sftp";
 import { getViewer } from "@/lib/viewer";
+import { getDataDir } from "@/lib/data-dir";
 
 export const runtime = "nodejs";
 
@@ -61,7 +62,7 @@ export async function GET(
     const parts = String(doc.storageKey || "").split("/");
     const storedName = parts.at(-1) || "";
     const ownerId = Number(parts[0] || doc.ownerId);
-    const diskPath = path.join(process.cwd(), "data", "uploads", String(ownerId), storedName);
+    const diskPath = path.join(getDataDir(), "uploads", String(ownerId), storedName);
     bytes = await readFile(diskPath);
   }
 

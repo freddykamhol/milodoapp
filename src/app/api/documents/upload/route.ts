@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { documents } from "@/db/schema";
 import { buildUserRemoteDir, buildUserRemoteFilePath, isSftpEnabled, withSftp } from "@/lib/sftp";
 import { getViewer } from "@/lib/viewer";
+import { getDataDir } from "@/lib/data-dir";
 
 type Category = "CV" | "TRAINING" | "CONTRACT";
 
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "sftp_failed", message: msg }, { status: 500 });
     }
   } else {
-    const dir = path.join(process.cwd(), "data", "uploads", String(ownerId));
+    const dir = path.join(getDataDir(), "uploads", String(ownerId));
     await mkdir(dir, { recursive: true });
     const diskName = `${docUuid}${ext}`;
     const diskPath = path.join(dir, diskName);

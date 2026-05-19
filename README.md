@@ -25,6 +25,8 @@ npm ci
 cp .env.example .env
 # setze DATABASE_URL auf einen absoluten Pfad, z.B.:
 # DATABASE_URL="file:/var/www/milodoapp/data/prod.db"
+# optional: setze DATA_DIR für lokale Uploads/Blog-Assets, z.B.:
+# DATA_DIR="/var/www/milodoapp/data"
 
 npm run db:migrate
 npm run build

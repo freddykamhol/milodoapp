@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { personalQuestionnaireFiles } from "@/db/schema";
 import { isSftpEnabled, withSftp } from "@/lib/sftp";
 import { getViewer } from "@/lib/viewer";
+import { getDataDir } from "@/lib/data-dir";
 
 export const runtime = "nodejs";
 
@@ -62,8 +63,8 @@ export async function GET(
     const parts = storageKey.split("/").filter(Boolean);
     const looksLikeUserUpload = parts.length >= 2 && /^[0-9]+$/.test(parts[0] ?? "");
     const diskPath = looksLikeUserUpload
-      ? path.join(process.cwd(), "data", "uploads", parts[0]!, parts.slice(1).join("/"))
-      : path.join(process.cwd(), "data", storageKey);
+      ? path.join(getDataDir(), "uploads", parts[0]!, parts.slice(1).join("/"))
+      : path.join(getDataDir(), storageKey);
     bytes = await readFile(diskPath);
   }
 
