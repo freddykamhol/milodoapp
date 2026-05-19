@@ -37,3 +37,6 @@ npm run start   # oder: npm run start:server
 # creates/updates schema and inserts demo seed data (demo user + demo appointments)
 npm run db:bootstrap
 ```
+
+If your local `dev.db` got out of sync with the migration files (e.g. because migrations were edited or the DB was updated via `push`),
+`db:bootstrap` will move it aside to a timestamped `dev.db.bak-*` file and recreate it from the `./drizzle/*.sql` migrations.

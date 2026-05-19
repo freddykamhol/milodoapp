@@ -20,6 +20,8 @@ build
 prisma/migrations
 *.db
 *.db-journal
+*.db.bak-*
+drizzle_migrate_*.log
 
 # generated
 src/generated
