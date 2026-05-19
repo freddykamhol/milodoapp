@@ -31,6 +31,8 @@ npm run build
 npm run start   # oder: npm run start:server
 ```
 
+Hinweis: Auf dem Server werden standardmäßig `devDependencies` übersprungen (siehe `.npmrc`), damit das Install in Hosting-Umgebungen ohne `exec`-Rechte in `node_modules/.bin` zuverlässig funktioniert. Lokal kannst du Dev-Dependencies mit `npm install --include=dev` installieren.
+
 ### Database bootstrap
 
 ```bash
