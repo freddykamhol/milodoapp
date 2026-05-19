@@ -155,12 +155,20 @@ export function MembersClient({
             </p>
           </div>
           {canCreate ? (
-            <Link
-              href="/members/new"
-              className="rounded-2xl bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-[0_12px_28px_color-mix(in_oklab,var(--accent)_35%,transparent)] hover:brightness-95"
-            >
-              Mitglied anlegen
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/members/import"
+                className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-semibold hover:bg-[var(--surface-2)]"
+              >
+                CSV Import
+              </Link>
+              <Link
+                href="/members/new"
+                className="rounded-2xl bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-[0_12px_28px_color-mix(in_oklab,var(--accent)_35%,transparent)] hover:brightness-95"
+              >
+                Mitglied anlegen
+              </Link>
+            </div>
           ) : null}
         </div>
 

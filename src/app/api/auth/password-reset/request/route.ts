@@ -20,7 +20,8 @@ export async function POST(request: Request) {
 
   try {
     const { token } = await createPasswordResetToken(user.id, { ttlMinutes: 60 });
-    const appUrl = String(process.env.APP_URL || "https://app.milodo-medical.de").replace(/\/+$/, "");
+    const fallbackOrigin = new URL(request.url).origin;
+    const appUrl = String(process.env.APP_URL || fallbackOrigin).replace(/\/+$/, "");
     const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(token)}`;
     await sendPasswordResetEmail({ to: email, resetUrl });
   } catch {
