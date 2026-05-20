@@ -35,6 +35,10 @@ npm run start   # oder: npm run start:server
 
 Hinweis: Auf dem Server werden standardmäßig `devDependencies` übersprungen (siehe `.npmrc`), damit das Install in Hosting-Umgebungen ohne `exec`-Rechte in `node_modules/.bin` zuverlässig funktioniert. Lokal kannst du Dev-Dependencies mit `npm install --include=dev` installieren.
 
+### Public contact form
+
+The public website contact form should post to the portal host (e.g. `https://portal.milodo-medical.de/api/public/contact-inquiries`), not the app host.
+
 ### Database bootstrap
 
 ```bash
