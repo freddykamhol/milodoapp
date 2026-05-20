@@ -9,6 +9,7 @@ import { buildEmailHtml } from "@/lib/email";
 import { triggerAppointmentInquiry } from "@/lib/appointment-inquiry";
 import { sendNotificationEmail } from "@/lib/notification-email";
 import { getViewer } from "@/lib/viewer";
+import { getAppUrl } from "@/lib/app-url";
 import {
   appointmentRequirements,
   appointments,
@@ -67,7 +68,7 @@ async function sendCustomerMail({ to, username, password }: { to: string; userna
   const fromEmail = row.fromEmail?.trim() || (row.username?.includes("@") ? row.username.trim() : "");
   if (!fromEmail) throw new Error("SMTP From E-Mail fehlt.");
 
-  const appUrl = String(process.env.APP_URL || "https://app.milodo-medical.de").replace(/\/+$/, "");
+  const appUrl = getAppUrl();
 
   const text = `Hallo!\n\nDein Account wurde angelegt.\n\nLogin: ${appUrl}\nUsername: ${username}\nPasswort: ${password}\n\nHinweis: Bitte Passwort nach dem ersten Login ändern.`;
   const html = buildEmailHtml({
@@ -508,7 +509,7 @@ export async function POST(request: Request) {
     }
 
     const when = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(startAt);
-    const url = `https://app.milodo-medical.de/appointments/${appointmentId}`;
+    const url = `${getAppUrl()}/appointments/${appointmentId}`;
 
     // customer confirmation mail (always, if SMTP enabled)
     const customerTo = String(viewer.email || customerRow.email || "").trim();

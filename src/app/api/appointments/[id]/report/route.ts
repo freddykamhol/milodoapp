@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { appointmentApplications, notifications } from "@/db/schema";
 import { sendReportConfirmationEmail } from "@/lib/report-confirmation-email";
 import { getViewer } from "@/lib/viewer";
+import { getAppUrl } from "@/lib/app-url";
 
 function formatWhen(startAt: Date, endAt: Date | null) {
   const fmt = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" });
@@ -75,7 +76,7 @@ export async function POST(
   // E-Mail Bestätigung (falls SMTP aktiv)
   const email = String(viewer.email || "").trim();
   if (email) {
-    const appUrl = String(process.env.APP_URL || "https://app.milodo-medical.de").replace(/\/+$/, "");
+    const appUrl = getAppUrl();
     const appointmentUrl = `${appUrl}/appointments/${appointmentId}`;
     sendReportConfirmationEmail({
       to: email,

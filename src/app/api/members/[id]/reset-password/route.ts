@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { createPasswordResetToken } from "@/lib/password-reset";
 import { sendPasswordResetEmail } from "@/lib/password-reset-email";
 import { getViewer } from "@/lib/viewer";
+import { getAppUrl } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   try {
     const { token } = await createPasswordResetToken(userId, { ttlMinutes: 60 });
-    const appUrl = String(process.env.APP_URL || "https://app.milodo-medical.de").replace(/\/+$/, "");
+    const appUrl = getAppUrl();
     const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(token)}`;
     const mail = await sendPasswordResetEmail({ to: email, resetUrl });
     if (!mail.ok) return NextResponse.json({ ok: false, error: mail.error }, { status: 409 });

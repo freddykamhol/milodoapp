@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getViewer } from "@/lib/viewer";
 import { appointments, customers, notificationPrefs, notificationReads, notifications, timesheetMonths } from "@/db/schema";
 import { sendNotificationEmail } from "@/lib/notification-email";
+import { getAppUrl } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 
@@ -164,7 +165,7 @@ async function ensureCustomerUnfilledReminder(viewer: { id: number; role: string
           { label: "Dienst", value: a.title },
           { label: "Zeit", value: new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(a.startAt) },
         ],
-        button: { label: "Zum Dienst", url: `https://app.milodo-medical.de${href}` },
+        button: { label: "Zum Dienst", url: `${getAppUrl()}${href}` },
       }).catch(() => null);
     }
   }

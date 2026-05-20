@@ -6,6 +6,7 @@ import { triggerAppointmentInquiry } from "@/lib/appointment-inquiry";
 import { sendNotificationEmail } from "@/lib/notification-email";
 import { eq } from "drizzle-orm";
 import { getViewer } from "@/lib/viewer";
+import { getAppUrl } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 
@@ -85,7 +86,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
             title: "Dienst freigegeben",
             intro: "Dein angeforderter Dienst wurde freigegeben. Die Abfrage wird gestartet.",
             sections: [{ label: "Dienst", value: full.title }],
-            button: { label: "Zum Dienst", url: `https://app.milodo-medical.de/appointments/${appointmentId}` },
+            button: { label: "Zum Dienst", url: `${getAppUrl()}/appointments/${appointmentId}` },
           }).catch(() => null);
         }
       }

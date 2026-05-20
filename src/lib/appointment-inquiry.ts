@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { buildEmailHtml } from "@/lib/email";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { getAppUrl } from "@/lib/app-url";
 import {
   appointmentRequirements,
   notificationPrefs,
@@ -59,7 +60,7 @@ async function sendInquiryTelegram({
   reqLabel: string;
 }) {
   const when = formatInquiryTimeRange(startAt, endAt);
-  const appUrl = `https://app.milodo-medical.de/appointments/${appointmentId}`;
+  const appUrl = `${getAppUrl()}/appointments/${appointmentId}`;
 
   const header =
   kind === "URGENT_REQUESTS"
@@ -111,7 +112,7 @@ async function sendInquiryEmail({
   });
 
   const when = formatInquiryTimeRange(startAt, endAt);
-  const url = `https://app.milodo-medical.de/appointments/${appointmentId}`;
+  const url = `${getAppUrl()}/appointments/${appointmentId}`;
   const subject = prefKey === "URGENT_REQUESTS" ? "[Milodo] AKUTE ABFRAGE" : "[Milodo] Dienstabfrage";
   const preheader = `${title} • ${when}`;
 

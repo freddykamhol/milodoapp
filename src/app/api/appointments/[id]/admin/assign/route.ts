@@ -6,6 +6,7 @@ import { buildEmailHtml } from "@/lib/email";
 import { recomputeAppointmentStaffingStatus } from "@/lib/appointment-staffing";
 import { sendNotificationEmail } from "@/lib/notification-email";
 import { getViewer } from "@/lib/viewer";
+import { getAppUrl } from "@/lib/app-url";
 import {
   appointmentApplications,
   customers,
@@ -124,7 +125,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       from: fromEmail,
       to: target.email,
       subject: `[Milodo] ${title}`,
-      text: `${bodyText}\n\nhttps://app.milodo-medical.de${href}`,
+      text: `${bodyText}\n\n${getAppUrl()}${href}`,
       html: buildEmailHtml({
         preheader: `${appointment.title} • ${when}`,
         title,
@@ -133,7 +134,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           { label: "Dienst", value: appointment.title },
           { label: "Zeit", value: when },
         ],
-        button: { label: "Direkt zum Dienst", url: `https://app.milodo-medical.de${href}` },
+        button: { label: "Direkt zum Dienst", url: `${getAppUrl()}${href}` },
       }),
     });
   };
@@ -178,7 +179,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
               { label: "Dienst", value: appointment.title },
               { label: "Zeit", value: new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt) },
             ].filter((s) => s.value),
-            button: { label: "Zum Dienst", url: `https://app.milodo-medical.de/appointments/${appointment.id}` },
+            button: { label: "Zum Dienst", url: `${getAppUrl()}/appointments/${appointment.id}` },
           }).catch(() => null);
         }
       }

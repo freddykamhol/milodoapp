@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { createPasswordResetToken } from "@/lib/password-reset";
 import { sendPasswordResetEmail } from "@/lib/password-reset-email";
+import { getAppUrl } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
   try {
     const { token } = await createPasswordResetToken(user.id, { ttlMinutes: 60 });
     const fallbackOrigin = new URL(request.url).origin;
-    const appUrl = String(process.env.APP_URL || fallbackOrigin).replace(/\/+$/, "");
+    const appUrl = getAppUrl({ fallbackOrigin });
     const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(token)}`;
     await sendPasswordResetEmail({ to: email, resetUrl });
   } catch {
