@@ -85,6 +85,11 @@ export default async function PersonalfragebogenDetailsPage({ params }: { params
   const contactPrefs = safeJsonParse<string[]>(row.contactPrefsJson ?? null, []);
 
   const files = [...(row.files ?? [])].sort((a, b) => String(a.kind).localeCompare(String(b.kind)));
+  const mailableFiles = files.map((f) => ({
+    id: Number(f.id),
+    label: kindLabel(String(f.kind || "")),
+    name: String(f.originalName || f.fileName || "").trim() || `Datei #${f.id}`,
+  }));
 
   return (
     <AppShell
@@ -96,6 +101,9 @@ export default async function PersonalfragebogenDetailsPage({ params }: { params
         pdfHref={`/api/personalfrageboegen/${row.id}/pdf`}
         existingUsername={row.createdUsername ? String(row.createdUsername) : null}
         existingUserId={row.createdUserId ? Number(row.createdUserId) : null}
+        questionnaireEmail={String(row.email || "").trim() || null}
+        questionnaireKind={String(row.kind || "HONORAR")}
+        mailableFiles={mailableFiles}
       />
       <div className="mb-4">
         <Link

@@ -13,10 +13,12 @@ export async function sendCustomEmail({
   to,
   subject,
   message,
+  attachments,
 }: {
   to: string;
   subject: string;
   message: string;
+  attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
 }) {
   await ensureSmtpRow();
   const row = await db.query.smtpSettings.findFirst({ where: (t, { eq }) => eq(t.id, 1) });
@@ -43,6 +45,6 @@ export async function sendCustomEmail({
     socketTimeout: 10_000,
   });
 
-  await transporter.sendMail({ from: fromEmail, to, subject, text, html });
+  await transporter.sendMail({ from: fromEmail, to, subject, text, html, attachments });
   return { ok: true as const };
 }

@@ -8,6 +8,7 @@ import { personalQuestionnaires } from "@/db/schema";
 import { desc } from "drizzle-orm";
 import { getViewer } from "@/lib/viewer";
 import { ensurePersonalfrageboegenSchema } from "@/lib/personalfrageboegen";
+import { SendQuestionnaireLinkClient } from "./_components/send-questionnaire-link-client";
 
 function statusTone(status: string): BadgeTone {
   if (status === "APPROVED") return "success";
@@ -53,7 +54,11 @@ export default async function PersonalfrageboegenPage() {
 
   return (
     <AppShell title="Personalfragebögen" subtitle="Eingänge aus dem öffentlichen Personalfragebogen (Honorar).">
-      <Card title="Übersicht" description={`${rows.length} Einträge (max. 250 zuletzt).`}>
+      <Card
+        title="Übersicht"
+        description={`${rows.length} Einträge (max. 250 zuletzt).`}
+        actions={<SendQuestionnaireLinkClient />}
+      >
         <div className="divide-y divide-[color:var(--border)] overflow-hidden rounded-2xl border border-[var(--border)] bg-white">
           {rows.length ? (
             rows.map((r) => (

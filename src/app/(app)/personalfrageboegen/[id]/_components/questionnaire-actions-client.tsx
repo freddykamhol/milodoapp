@@ -8,11 +8,17 @@ export function QuestionnaireActionsClient({
   pdfHref,
   existingUsername,
   existingUserId,
+  questionnaireEmail,
+  questionnaireKind,
+  mailableFiles,
 }: {
   questionnaireId: number;
   pdfHref: string;
   existingUsername: string | null;
   existingUserId: number | null;
+  questionnaireEmail: string | null;
+  questionnaireKind: string;
+  mailableFiles: Array<{ id: number; label: string; name: string }>;
 }) {
   const buttonRef = React.useRef<HTMLButtonElement | null>(null);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
@@ -27,8 +33,13 @@ export function QuestionnaireActionsClient({
   );
 
   const [emailOpen, setEmailOpen] = React.useState(false);
-  const [emailSubject, setEmailSubject] = React.useState("MILODO – Nachricht");
-  const [emailMessage, setEmailMessage] = React.useState("");
+  const [emailTo, setEmailTo] = React.useState(questionnaireEmail || "");
+  const [emailSubject, setEmailSubject] = React.useState(`MILODO – Personalfragebogen #${questionnaireId}`);
+  const [emailMessage, setEmailMessage] = React.useState(
+    "Hallo,\n\nanbei sende ich dir den Personalfragebogen.\n\nViele Grüße\nMILODO medical",
+  );
+  const [emailIncludePdf, setEmailIncludePdf] = React.useState(questionnaireKind === "HONORAR");
+  const [emailFileIds, setEmailFileIds] = React.useState<number[]>([]);
   const [emailBusy, setEmailBusy] = React.useState(false);
   const [emailError, setEmailError] = React.useState<string | null>(null);
   const [emailSent, setEmailSent] = React.useState(false);
@@ -112,6 +123,21 @@ export function QuestionnaireActionsClient({
           </a>
         ) : null}
         <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            setEmailOpen(true);
+            setEmailSent(false);
+            setEmailError(null);
+            setEmailTo(questionnaireEmail || "");
+            setEmailIncludePdf(questionnaireKind === "HONORAR");
+            setEmailFileIds([]);
+          }}
+          className="inline-flex items-center justify-center rounded-2xl bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-soft)] hover:brightness-[1.02]"
+        >
+          Fragebogen versenden
+        </button>
+        <button
           ref={buttonRef}
           type="button"
           onClick={() => {
@@ -165,10 +191,13 @@ export function QuestionnaireActionsClient({
                   setEmailOpen(true);
                   setEmailSent(false);
                   setEmailError(null);
+                  setEmailTo(questionnaireEmail || "");
+                  setEmailIncludePdf(questionnaireKind === "HONORAR");
+                  setEmailFileIds([]);
                 }}
                 className="block w-full px-4 py-3 text-left text-sm font-semibold hover:bg-[var(--surface-2)]"
               >
-                E‑Mail schreiben
+                Fragebogen per E‑Mail senden
               </button>
             </div>,
             document.body,
@@ -181,7 +210,7 @@ export function QuestionnaireActionsClient({
               className="fixed inset-0 z-[90] flex items-end justify-center bg-black/40 p-4 sm:items-center"
               role="dialog"
               aria-modal="true"
-              aria-label="E‑Mail schreiben"
+              aria-label="Personalfragebogen versenden"
               onClick={(e) => {
                 if (e.target === e.currentTarget) setEmailOpen(false);
               }}
@@ -189,8 +218,8 @@ export function QuestionnaireActionsClient({
               <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow)]">
                 <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-4">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">E‑Mail schreiben</p>
-                    <p className="mt-1 text-xs text-[color:var(--muted)]">Wird an die im Fragebogen hinterlegte Adresse gesendet.</p>
+                    <p className="truncate text-sm font-semibold">Personalfragebogen versenden</p>
+                    <p className="mt-1 text-xs text-[color:var(--muted)]">Versand per SMTP (Einstellungen → Integrationen).</p>
                   </div>
                   <button
                     type="button"
@@ -202,6 +231,21 @@ export function QuestionnaireActionsClient({
                 </div>
                 <div className="px-5 py-4">
                   <label className="block">
+                    <span className="text-xs font-semibold tracking-tight text-[color:var(--muted)]">Empfänger</span>
+                    <input
+                      value={emailTo}
+                      onChange={(e) => setEmailTo(e.target.value)}
+                      placeholder="ziel@email.de"
+                      className="mt-2 w-full rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:color-mix(in_oklab,var(--accent)_45%,var(--border))] focus:ring-4 focus:ring-[color:color-mix(in_oklab,var(--accent)_16%,transparent)]"
+                    />
+                    {questionnaireEmail ? (
+                      <p className="mt-1 text-[11px] text-[color:var(--muted)]">Standard aus Fragebogen: {questionnaireEmail}</p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-[color:var(--muted)]">Im Fragebogen ist keine E‑Mail hinterlegt.</p>
+                    )}
+                  </label>
+
+                  <label className="mt-4 block">
                     <span className="text-xs font-semibold tracking-tight text-[color:var(--muted)]">Betreff</span>
                     <input
                       value={emailSubject}
@@ -209,6 +253,53 @@ export function QuestionnaireActionsClient({
                       className="mt-2 w-full rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-sm outline-none focus:border-[color:color-mix(in_oklab,var(--accent)_45%,var(--border))] focus:ring-4 focus:ring-[color:color-mix(in_oklab,var(--accent)_16%,transparent)]"
                     />
                   </label>
+
+                  <div className="mt-4 rounded-2xl border border-[var(--border)] bg-white p-3">
+                    <p className="text-xs font-semibold tracking-tight text-[color:var(--muted)]">Anhänge</p>
+                    <label className="mt-2 flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={emailIncludePdf}
+                        onChange={(e) => setEmailIncludePdf(e.target.checked)}
+                        disabled={questionnaireKind !== "HONORAR"}
+                      />
+                      <span>PDF‑Kopie Personalfragebogen (Honorar)</span>
+                      {questionnaireKind !== "HONORAR" ? (
+                        <span className="text-xs text-[color:var(--muted)]">(nicht verfügbar)</span>
+                      ) : null}
+                    </label>
+
+                    {mailableFiles.length ? (
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold tracking-tight text-[color:var(--muted)]">Uploads</p>
+                        <div className="mt-2 space-y-2">
+                          {mailableFiles.map((f) => {
+                            const checked = emailFileIds.includes(f.id);
+                            return (
+                              <label key={f.id} className="flex items-start gap-2 text-sm">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    const next = e.target.checked
+                                      ? Array.from(new Set([...emailFileIds, f.id]))
+                                      : emailFileIds.filter((id) => id !== f.id);
+                                    setEmailFileIds(next);
+                                  }}
+                                />
+                                <span className="min-w-0">
+                                  <span className="block font-semibold">{f.label}</span>
+                                  <span className="block truncate text-xs text-[color:var(--muted)]">{f.name}</span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-[color:var(--muted)]">Keine Uploads vorhanden.</p>
+                    )}
+                  </div>
                   <label className="mt-4 block">
                     <span className="text-xs font-semibold tracking-tight text-[color:var(--muted)]">Nachricht</span>
                     <textarea
@@ -244,7 +335,13 @@ export function QuestionnaireActionsClient({
                           const res = await fetch(`/api/personalfrageboegen/${questionnaireId}/email`, {
                             method: "POST",
                             headers: { "content-type": "application/json" },
-                            body: JSON.stringify({ subject: emailSubject, message: emailMessage }),
+                            body: JSON.stringify({
+                              to: emailTo,
+                              subject: emailSubject,
+                              message: emailMessage,
+                              includePdf: emailIncludePdf,
+                              fileIds: emailFileIds,
+                            }),
                           });
                           const json = (await res.json()) as { ok: boolean; error?: string; message?: string };
                           if (!res.ok || !json.ok) throw new Error(json.message || json.error || "send_failed");
@@ -255,10 +352,20 @@ export function QuestionnaireActionsClient({
                           setEmailBusy(false);
                         }
                       }}
-                      disabled={emailBusy || !emailMessage.trim()}
+                      disabled={
+                        emailBusy ||
+                        !emailMessage.trim() ||
+                        !emailTo.trim() ||
+                        (!emailIncludePdf && emailFileIds.length === 0)
+                      }
                       className={[
                         "inline-flex items-center justify-center rounded-2xl bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-soft)]",
-                        emailBusy || !emailMessage.trim() ? "opacity-60" : "hover:brightness-[1.02]",
+                        emailBusy ||
+                        !emailMessage.trim() ||
+                        !emailTo.trim() ||
+                        (!emailIncludePdf && emailFileIds.length === 0)
+                          ? "opacity-60"
+                          : "hover:brightness-[1.02]",
                       ].join(" ")}
                     >
                       {emailBusy ? "Sende…" : "E‑Mail senden"}
