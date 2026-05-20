@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 
 import { isSftpEnabled, withSftp } from "@/lib/sftp";
 import { getDataDir } from "@/lib/data-dir";
@@ -130,4 +130,36 @@ export async function writeBlogExport({
   }
 
   return { baseDir };
+}
+
+export async function deleteBlogExport({
+  category,
+  postId,
+}: {
+  category: string;
+  postId: number;
+}) {
+  const cat = blogCategoryKey(category);
+  const baseDir = path.posix.join("blog", cat, String(postId));
+
+  const sftpOn = await isSftpEnabled();
+  if (sftpOn) {
+    const res = await withSftp(async (client, basePath) => {
+      const remoteDir = path.posix.join(basePath, baseDir);
+      try {
+        await (client as any).rmdir(remoteDir, true);
+      } catch {
+        // ignore (missing dir etc.)
+      }
+      return true;
+    });
+    if (!res) throw new Error("sftp_not_available");
+  } else {
+    const diskDir = path.join(getDataDir(), baseDir);
+    try {
+      await rm(diskDir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
 }

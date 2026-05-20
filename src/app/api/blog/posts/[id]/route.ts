@@ -6,6 +6,7 @@ import { blogPosts } from "@/db/schema";
 import { getViewer } from "@/lib/viewer";
 import { blogCategoryKey } from "@/lib/blog-storage";
 import { ensureBlogSchema } from "@/lib/blog-schema";
+import { deleteBlogExport } from "@/lib/blog-storage";
 
 export const runtime = "nodejs";
 
@@ -88,6 +89,16 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   const { id } = await params;
   const postId = Number(id);
   if (!Number.isFinite(postId)) return NextResponse.json({ ok: false, error: "invalid_id" }, { status: 400 });
+
+  await ensureBlogSchema();
+  const row = await db.query.blogPosts.findFirst({ where: (t, { eq }) => eq(t.id, postId) });
+  if (row) {
+    try {
+      await deleteBlogExport({ category: row.category, postId: row.id });
+    } catch {
+      // ignore
+    }
+  }
 
   await db.delete(blogPosts).where(eq(blogPosts.id, postId));
   return NextResponse.json({ ok: true });

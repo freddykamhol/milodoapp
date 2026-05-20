@@ -3,20 +3,15 @@ import { notFound, redirect } from "next/navigation";
 import { desc } from "drizzle-orm";
 
 import { AppShell } from "../_components/app-shell";
-import { Badge, Card, type BadgeTone } from "../_components/ui";
+import { Card } from "../_components/ui";
 import { db } from "@/lib/db";
 import { blogPosts } from "@/db/schema";
 import { getViewer } from "@/lib/viewer";
 import { ensureBlogSchema } from "@/lib/blog-schema";
+import { BlogAdminListClient, type BlogAdminRow } from "./_components/blog-admin-list-client";
 
 function isAdminOrVerwaltung(role: string) {
   return role === "ADMIN" || role === "VERWALTUNG";
-}
-
-function statusTone(status: string): BadgeTone {
-  if (status === "PUBLISHED") return "success";
-  if (status === "ARCHIVED") return "danger";
-  return "muted";
 }
 
 export default async function BlogAdminPage() {
@@ -33,6 +28,15 @@ export default async function BlogAdminPage() {
     if (!msg.includes("no such table")) throw e;
   }
 
+  const clientRows: BlogAdminRow[] = rows.map((r) => ({
+    id: r.id,
+    title: String(r.title ?? ""),
+    category: String(r.category ?? ""),
+    slug: String(r.slug ?? ""),
+    status: (String(r.status || "DRAFT") as BlogAdminRow["status"]) || "DRAFT",
+    updatedAtIso: r.updatedAt ? new Date(r.updatedAt).toISOString() : null,
+  }));
+
   return (
     <AppShell title="Blog" subtitle="Blog-Beiträge erstellen, bearbeiten und veröffentlichen.">
       <Card
@@ -47,30 +51,7 @@ export default async function BlogAdminPage() {
           </Link>
         }
       >
-        <div className="divide-y divide-[color:var(--border)] overflow-hidden rounded-2xl border border-[var(--border)] bg-white">
-          {rows.length ? (
-            rows.map((r) => (
-              <Link
-                key={r.id}
-                href={`/blog/${r.id}`}
-                className="flex flex-col gap-2 px-4 py-3 transition hover:bg-[var(--surface-2)] md:flex-row md:items-center md:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold tracking-tight">{r.title || "(ohne Titel)"}</p>
-                  <p className="mt-1 truncate text-xs text-[color:var(--muted)]">
-                    {r.category} · {r.slug || "—"} ·{" "}
-                    {r.updatedAt ? new Date(r.updatedAt).toLocaleString("de-DE") : "—"}
-                  </p>
-                </div>
-                <div className="shrink-0">
-                  <Badge tone={statusTone(String(r.status || ""))}>{String(r.status || "")}</Badge>
-                </div>
-              </Link>
-            ))
-          ) : (
-            <div className="px-4 py-6 text-sm text-[color:var(--muted)]">Noch keine Blog-Beiträge vorhanden.</div>
-          )}
-        </div>
+        <BlogAdminListClient initialRows={clientRows} />
       </Card>
     </AppShell>
   );
