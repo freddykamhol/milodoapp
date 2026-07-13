@@ -264,5 +264,9 @@ function errorText(error?: string) {
   if (error === "invalid_name") return "Vor- und Nachname fehlen.";
   if (error === "invalid_password") return "Das Passwort muss mindestens 8 Zeichen lang sein.";
   if (error === "invalid_verification_password") return "Das Formular-Passwort ist nicht korrekt.";
+  if (error === "email_exists") return "Diese E-Mail-Adresse ist bereits vergeben.";
+  if (error === "username_exists") return "Für diese Angaben existiert bereits ein Benutzername.";
+  if (error === "registration_tables_missing") return "Die Registrierungstabellen fehlen noch. Bitte Migrationen ausführen.";
+  if (error === "create_failed") return "Der Benutzer konnte nicht angelegt werden.";
   return "Registrierung fehlgeschlagen.";
 }

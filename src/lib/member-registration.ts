@@ -155,54 +155,64 @@ export async function createRegisteredMember({
   const geb = gebIso ? new Date(gebIso) : null;
   if (gebIso && Number.isNaN(geb!.getTime())) return { ok: false as const, error: "invalid_geb" };
 
-  const inserted = await db.transaction((tx) => {
-    const userRows = tx
-      .insert(users)
-      .values({
-        username,
-        passwordHash: hashPassword(password),
-        role,
-        firstName,
-        lastName,
-        qualRD:
-          payload.qualRD && ["SAN", "RH", "RS", "RA", "NFS"].includes(payload.qualRD)
-            ? payload.qualRD
-            : null,
-        qualAusb: payload.qualAusb === "AUSBILDER" ? "AUSBILDER" : null,
-        einsatzort:
-          payload.einsatzort && ["AUSBILDUNG", "RD", "BEIDE"].includes(payload.einsatzort)
-            ? payload.einsatzort
-            : null,
-        geb: geb ?? undefined,
-        strasse: normalizeBasic(payload.strasse) || null,
-        hausnummer: normalizeBasic(payload.hausnummer) || null,
-        plz: normalizeBasic(payload.plz) || null,
-        ort: normalizeBasic(payload.ort) || null,
-        ortErgaenzung: normalizeBasic(payload.ortErgaenzung) || "",
-        email,
-        telefon: telefon || null,
-        locked: verificationMode === "ADMIN",
-      })
-      .returning({ id: users.id, username: users.username })
-      .all();
+  try {
+    const inserted = await db.transaction((tx) => {
+      const userRows = tx
+        .insert(users)
+        .values({
+          username,
+          passwordHash: hashPassword(password),
+          role,
+          firstName,
+          lastName,
+          qualRD:
+            payload.qualRD && ["SAN", "RH", "RS", "RA", "NFS"].includes(payload.qualRD)
+              ? payload.qualRD
+              : null,
+          qualAusb: payload.qualAusb === "AUSBILDER" ? "AUSBILDER" : null,
+          einsatzort:
+            payload.einsatzort && ["AUSBILDUNG", "RD", "BEIDE"].includes(payload.einsatzort)
+              ? payload.einsatzort
+              : null,
+          geb: geb ?? undefined,
+          strasse: normalizeBasic(payload.strasse) || null,
+          hausnummer: normalizeBasic(payload.hausnummer) || null,
+          plz: normalizeBasic(payload.plz) || null,
+          ort: normalizeBasic(payload.ort) || null,
+          ortErgaenzung: normalizeBasic(payload.ortErgaenzung) || "",
+          email,
+          telefon: telefon || null,
+          locked: verificationMode === "ADMIN",
+        })
+        .returning({ id: users.id, username: users.username })
+        .all();
 
-    const user = userRows.at(0);
-    if (!user) return null;
+      const user = userRows.at(0);
+      if (!user) return null;
 
-    tx.insert(memberRegistrationSubmissions)
-      .values({
-        formId,
-        userId: user.id,
-        status: verificationMode === "ADMIN" ? "PENDING" : "APPROVED",
-        approvedAt: verificationMode === "PASSWORD" ? new Date() : null,
-      })
-      .run();
+      tx.insert(memberRegistrationSubmissions)
+        .values({
+          formId,
+          userId: user.id,
+          status: verificationMode === "ADMIN" ? "PENDING" : "APPROVED",
+          approvedAt: verificationMode === "PASSWORD" ? new Date() : null,
+        })
+        .run();
 
-    return user;
-  });
+      return user;
+    });
 
-  if (!inserted) return { ok: false as const, error: "create_failed" };
-  return { ok: true as const, id: inserted.id, username: inserted.username };
+    if (!inserted) return { ok: false as const, error: "create_failed" };
+    return { ok: true as const, id: inserted.id, username: inserted.username };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    if (message.includes("users.email")) return { ok: false as const, error: "email_exists" };
+    if (message.includes("users.username")) return { ok: false as const, error: "username_exists" };
+    if (message.includes("member_registration_submissions")) {
+      return { ok: false as const, error: "registration_tables_missing" };
+    }
+    return { ok: false as const, error: "create_failed" };
+  }
 }
 
 export async function listRegistrationForms() {
