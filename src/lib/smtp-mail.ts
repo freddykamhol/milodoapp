@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
+import crypto from "node:crypto";
 
 import { smtpSettings } from "@/db/schema";
 import { db } from "@/lib/db";
@@ -28,6 +29,12 @@ export async function getSmtpConfig() {
 }
 
 export function createSmtpTransporter(config: SmtpConfig) {
+  const dkimDomain = String(process.env.SMTP_DKIM_DOMAIN ?? "").trim();
+  const dkimSelector = String(process.env.SMTP_DKIM_SELECTOR ?? "").trim();
+  const dkimPrivateKey = String(process.env.SMTP_DKIM_PRIVATE_KEY ?? "")
+    .replaceAll("\\n", "\n")
+    .trim();
+
   return nodemailer.createTransport({
     host: config.host,
     port: config.port,
@@ -36,7 +43,19 @@ export function createSmtpTransporter(config: SmtpConfig) {
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 10_000,
+    dkim:
+      dkimDomain && dkimSelector && dkimPrivateKey
+        ? {
+            domainName: dkimDomain,
+            keySelector: dkimSelector,
+            privateKey: dkimPrivateKey,
+          }
+        : undefined,
   });
+}
+
+function emailDomain(email: string) {
+  return email.split("@").at(1)?.trim().toLowerCase() || "";
 }
 
 function collectEnvelopeRecipients(value: Mail.Options["to"] | Mail.Options["cc"] | Mail.Options["bcc"]) {
@@ -57,11 +76,17 @@ export async function sendSmtpMail(message: Omit<Mail.Options, "from" | "sender"
     ...collectEnvelopeRecipients(message.cc),
     ...collectEnvelopeRecipients(message.bcc),
   ];
+  const fromDomain = emailDomain(smtp.config.fromEmail);
+  const messageId = fromDomain
+    ? `<${crypto.randomBytes(16).toString("hex")}@${fromDomain}>`
+    : undefined;
 
   await transporter.sendMail({
     ...message,
     from: { name: SMTP_FROM_NAME, address: smtp.config.fromEmail },
     sender: smtp.config.fromEmail,
+    replyTo: message.replyTo ?? smtp.config.fromEmail,
+    messageId: message.messageId ?? messageId,
     envelope: {
       from: smtp.config.fromEmail,
       to: envelopeRecipients,
