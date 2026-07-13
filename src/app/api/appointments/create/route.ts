@@ -1,13 +1,13 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { and, eq, gte, lt, or } from "drizzle-orm";
-import nodemailer from "nodemailer";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 import { db } from "@/lib/db";
 import { buildEmailHtml } from "@/lib/email";
 import { triggerAppointmentInquiry } from "@/lib/appointment-inquiry";
 import { sendNotificationEmail } from "@/lib/notification-email";
+import { sendSmtpMail } from "@/lib/smtp-mail";
 import { getViewer } from "@/lib/viewer";
 import { getAppUrl } from "@/lib/app-url";
 import {
@@ -18,11 +18,9 @@ import {
   notificationPrefs,
   notifications,
   prowlKeys,
-  smtpSettings,
   users,
 } from "@/db/schema";
 import { buildServiceRemoteFilePath, buildServicesDir, isSftpEnabled, withSftp } from "@/lib/sftp";
-import { decryptSecret } from "@/lib/secrets";
 
 export const runtime = "nodejs";
 
@@ -56,18 +54,7 @@ function formatHoursLabel(startAt: Date, endAt: Date) {
   return `${String(rounded).replace(".", ",")}h`;
 }
 
-async function ensureSmtpRow() {
-  await db.insert(smtpSettings).values({ id: 1 }).onConflictDoNothing();
-}
-
 async function sendCustomerMail({ to, username, password }: { to: string; username: string; password: string }) {
-  await ensureSmtpRow();
-  const row = await db.query.smtpSettings.findFirst({ where: (t, { eq }) => eq(t.id, 1) });
-  if (!row?.enabled) throw new Error("SMTP ist nicht aktiviert.");
-  if (!row.host || !row.port) throw new Error("SMTP ist nicht konfiguriert.");
-  const fromEmail = row.fromEmail?.trim() || (row.username?.includes("@") ? row.username.trim() : "");
-  if (!fromEmail) throw new Error("SMTP From E-Mail fehlt.");
-
   const appUrl = getAppUrl();
 
   const text = `Hallo!\n\nDein Account wurde angelegt.\n\nLogin: ${appUrl}\nUsername: ${username}\nPasswort: ${password}\n\nHinweis: Bitte Passwort nach dem ersten Login ändern.`;
@@ -83,23 +70,13 @@ async function sendCustomerMail({ to, username, password }: { to: string; userna
     footerNote: "Sicherheitshinweis: Bitte ändere dein Passwort nach dem ersten Login.",
   });
 
-  const transporter = nodemailer.createTransport({
-    host: row.host,
-    port: row.port,
-    secure: Boolean(row.secure),
-    auth: row.username ? { user: row.username, pass: decryptSecret(row.password) } : undefined,
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 10_000,
-  });
-
-  await transporter.sendMail({
-    from: fromEmail,
+  const result = await sendSmtpMail({
     to,
     subject: "Willkommen bei Milodo – Zugangsdaten",
     text,
     html,
   });
+  if (!result.ok) throw new Error(result.error);
 }
 
 function buildRequirementsLabel(reqs: Array<{ minCount: number; value: string }>) {

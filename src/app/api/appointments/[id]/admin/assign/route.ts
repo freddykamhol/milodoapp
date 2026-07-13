@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
 
 import { db } from "@/lib/db";
 import { buildEmailHtml } from "@/lib/email";
+import { sendSmtpMail } from "@/lib/smtp-mail";
 import { recomputeAppointmentStaffingStatus } from "@/lib/appointment-staffing";
 import { sendNotificationEmail } from "@/lib/notification-email";
 import { getViewer } from "@/lib/viewer";
@@ -12,7 +12,6 @@ import {
   customers,
   notificationPrefs,
   notifications,
-  smtpSettings,
   users,
 } from "@/db/schema";
 
@@ -104,25 +103,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const trySendEmail = async () => {
     if (!prefs?.emailEnabled) return;
     if (!target?.email?.trim()) return;
-    await db.insert(smtpSettings).values({ id: 1 }).onConflictDoNothing();
-    const smtp = await db.query.smtpSettings.findFirst({ where: (t, { eq }) => eq(t.id, 1) });
-    if (!smtp?.enabled) return;
-    if (!smtp.host || !smtp.port) return;
-    const fromEmail = smtp.fromEmail?.trim() || (smtp.username?.includes("@") ? smtp.username.trim() : "");
-    if (!fromEmail) return;
-
-    const transporter = nodemailer.createTransport({
-      host: smtp.host,
-      port: smtp.port,
-      secure: Boolean(smtp.secure),
-      auth: smtp.username ? { user: smtp.username, pass: smtp.password } : undefined,
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 10_000,
-    });
-
-    await transporter.sendMail({
-      from: fromEmail,
+    await sendSmtpMail({
       to: target.email,
       subject: `[Milodo] ${title}`,
       text: `${bodyText}\n\n${getAppUrl()}${href}`,

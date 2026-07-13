@@ -1,15 +1,14 @@
-import nodemailer from "nodemailer";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { buildEmailHtml } from "@/lib/email";
+import { sendSmtpMail } from "@/lib/smtp-mail";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { getAppUrl } from "@/lib/app-url";
 import {
   appointmentRequirements,
   notificationPrefs,
   prowlKeys,
-  smtpSettings,
   users,
 } from "@/db/schema";
 
@@ -38,10 +37,6 @@ function formatInquiryTimeRange(startAt: Date, endAt: Date | null) {
   if (!endAt) return fmt.format(startAt);
   const timeFmt = new Intl.DateTimeFormat("de-DE", { timeStyle: "short" });
   return `${fmt.format(startAt)}–${timeFmt.format(endAt)}`;
-}
-
-async function ensureSmtpRow() {
-  await db.insert(smtpSettings).values({ id: 1 }).onConflictDoNothing();
 }
 
 async function sendInquiryTelegram({
@@ -93,24 +88,6 @@ async function sendInquiryEmail({
   endAt: Date | null;
   reqLabel: string;
 }) {
-  await ensureSmtpRow();
-  const smtp = await db.query.smtpSettings.findFirst({ where: (t, { eq }) => eq(t.id, 1) });
-  if (!smtp?.enabled || !smtp.host || !smtp.port) {
-    return { skipped: true as const, reason: "smtp_disabled" as const };
-  }
-  const fromEmail = smtp.fromEmail?.trim() || (smtp.username?.includes("@") ? smtp.username.trim() : "");
-  if (!fromEmail) throw new Error("missing_from_email");
-
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: Boolean(smtp.secure),
-    auth: smtp.username ? { user: smtp.username, pass: smtp.password } : undefined,
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 10_000,
-  });
-
   const when = formatInquiryTimeRange(startAt, endAt);
   const url = `${getAppUrl()}/appointments/${appointmentId}`;
   const subject = prefKey === "URGENT_REQUESTS" ? "[Milodo] AKUTE ABFRAGE" : "[Milodo] Dienstabfrage";
@@ -136,13 +113,13 @@ async function sendInquiryEmail({
       ],
       button: { label: "Direkt zum Dienst", url },
     });
-    await transporter.sendMail({
-      from: fromEmail,
+    const result = await sendSmtpMail({
       to,
       subject,
       text,
       html,
     });
+    if (!result.ok) return { skipped: true as const, reason: result.error };
   }
 
   return { skipped: false as const };

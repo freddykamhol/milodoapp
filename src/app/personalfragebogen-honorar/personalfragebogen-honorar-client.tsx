@@ -329,7 +329,6 @@ export function PersonalfragebogenHonorarClient() {
           city.trim() &&
           phone.trim() &&
           email.trim() &&
-          nationality.trim() &&
           (taxNumber.trim() || taxNumberLater),
       );
     if (step === 2) return Boolean(bankName.trim() && iban.trim());
@@ -350,7 +349,6 @@ export function PersonalfragebogenHonorarClient() {
     firstName,
     lastName,
     geb,
-    nationality,
     taxNumber,
     taxNumberLater,
     street,

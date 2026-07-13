@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 
 import { Badge } from "../../_components/ui";
+import { RegistrationFormsModal } from "./registration-forms-modal";
 
 export type MemberItem = {
   id: number;
@@ -18,6 +19,7 @@ export type MemberItem = {
   qualAusb: string | null;
   einsatzort: string | null;
   locked?: boolean;
+  pendingRegistration?: boolean;
 };
 
 type FilterState = {
@@ -50,6 +52,7 @@ export function MembersClient({
 }) {
   const router = useRouter();
   const [openMenuForId, setOpenMenuForId] = React.useState<number | null>(null);
+  const [registrationFormsOpen, setRegistrationFormsOpen] = React.useState(false);
   const [menuPos, setMenuPos] = React.useState<{ top: number; left: number } | null>(null);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
   const menuAnchorRef = React.useRef<HTMLButtonElement | null>(null);
@@ -156,6 +159,13 @@ export function MembersClient({
           </div>
           {canCreate ? (
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setRegistrationFormsOpen(true)}
+                className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-semibold hover:bg-[var(--surface-2)]"
+              >
+                Registrierungsformulare
+              </button>
               <Link
                 href="/members/import"
                 className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-semibold hover:bg-[var(--surface-2)]"
@@ -276,6 +286,7 @@ export function MembersClient({
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <Badge tone="muted">@{m.username}</Badge>
                   {m.locked ? <Badge tone="danger">Gesperrt</Badge> : null}
+                  {m.pendingRegistration ? <Badge tone="warning">Ausstehend</Badge> : null}
                 </div>
               </div>
               <div className="min-w-0">
@@ -357,6 +368,27 @@ export function MembersClient({
                           >
                             {m.locked ? "Entsperren" : "Sperren"}
                           </button>
+                          {m.pendingRegistration ? (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setOpenMenuForId(null);
+                                const ok = window.confirm(`Registrierung bestätigen: ${m.username}?`);
+                                if (!ok) return;
+                                const res = await fetch(`/api/member-registration-forms/submissions/${m.id}/approve`, {
+                                  method: "POST",
+                                });
+                                if (!res.ok) {
+                                  window.alert("Bestätigung fehlgeschlagen.");
+                                  return;
+                                }
+                                router.refresh();
+                              }}
+                              className="block w-full px-3 py-2 text-left text-sm font-semibold text-[color:var(--success)] hover:bg-[var(--surface-2)]"
+                            >
+                              Registrierung bestätigen
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             onClick={async () => {
@@ -406,6 +438,7 @@ export function MembersClient({
           <p className="px-4 py-6 text-sm text-[color:var(--muted)]">Keine Mitglieder gefunden.</p>
         ) : null}
       </div>
+      <RegistrationFormsModal open={registrationFormsOpen} onClose={() => setRegistrationFormsOpen(false)} />
     </div>
   );
 }

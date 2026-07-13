@@ -101,6 +101,88 @@ export const documentsRelations = relations(documents, ({ one }) => ({
   owner: one(users, { fields: [documents.ownerId], references: [users.id] }),
 }));
 
+export const memberRegistrationForms = sqliteTable(
+  "member_registration_forms",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+
+    token: text("token").notNull(),
+    title: text("title").notNull().default("Registrierungsformular"),
+    userLimit: integer("user_limit").notNull(),
+    role: text("role", {
+      enum: ["ADMIN", "VERWALTUNG", "PERSONAL"],
+    })
+      .notNull()
+      .default("PERSONAL"),
+    verificationMode: text("verification_mode", {
+      enum: ["ADMIN", "PASSWORD"],
+    })
+      .notNull()
+      .default("ADMIN"),
+    passwordMode: text("password_mode", {
+      enum: ["SELF", "GENERATED"],
+    })
+      .notNull()
+      .default("SELF"),
+    verificationPasswordHash: text("verification_password_hash"),
+    verificationPasswordSecret: text("verification_password_secret"),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+
+    createdById: integer("created_by_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    uniqueIndex("member_registration_forms_token_unique").on(table.token),
+    index("member_registration_forms_expires_at_idx").on(table.expiresAt),
+    index("member_registration_forms_active_idx").on(table.active),
+  ],
+);
+
+export const memberRegistrationSubmissions = sqliteTable(
+  "member_registration_submissions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+
+    formId: integer("form_id")
+      .notNull()
+      .references(() => memberRegistrationForms.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+
+    status: text("status", {
+      enum: ["PENDING", "APPROVED"],
+    })
+      .notNull()
+      .default("PENDING"),
+    approvedAt: integer("approved_at", { mode: "timestamp_ms" }),
+    approvedById: integer("approved_by_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    uniqueIndex("member_registration_submissions_user_unique").on(table.userId),
+    index("member_registration_submissions_form_id_idx").on(table.formId),
+    index("member_registration_submissions_status_idx").on(table.status),
+  ],
+);
+
+export const memberRegistrationFormsRelations = relations(memberRegistrationForms, ({ many, one }) => ({
+  createdBy: one(users, { fields: [memberRegistrationForms.createdById], references: [users.id] }),
+  submissions: many(memberRegistrationSubmissions),
+}));
+
+export const memberRegistrationSubmissionsRelations = relations(memberRegistrationSubmissions, ({ one }) => ({
+  form: one(memberRegistrationForms, {
+    fields: [memberRegistrationSubmissions.formId],
+    references: [memberRegistrationForms.id],
+  }),
+  user: one(users, { fields: [memberRegistrationSubmissions.userId], references: [users.id] }),
+  approvedBy: one(users, { fields: [memberRegistrationSubmissions.approvedById], references: [users.id] }),
+}));
+
 export const customers = sqliteTable(
   "customers",
   {

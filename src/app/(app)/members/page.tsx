@@ -1,6 +1,6 @@
 import { AppShell } from "../_components/app-shell";
 import { db } from "@/lib/db";
-import { users } from "@/db/schema";
+import { memberRegistrationSubmissions } from "@/db/schema";
 import { MembersClient, type MemberItem } from "./_components/members-client";
 import { notFound, redirect } from "next/navigation";
 import { getViewer } from "@/lib/viewer";
@@ -17,6 +17,13 @@ export default async function MembersPage() {
   const members = viewer.role === "PERSONAL" ? membersRaw.filter((m) => m.role !== "KUNDE") : membersRaw;
 
   const canViewAll = viewer.role === "ADMIN" || viewer.role === "VERWALTUNG";
+  const pendingRegistrations = canViewAll
+    ? await db.query.memberRegistrationSubmissions.findMany({
+        where: (t, { eq }) => eq(t.status, "PENDING"),
+        columns: { userId: true },
+      })
+    : [];
+  const pendingRegistrationIds = new Set(pendingRegistrations.map((registration) => registration.userId));
 
   const items: MemberItem[] = members.map((m) => ({
     id: m.id,
@@ -29,6 +36,7 @@ export default async function MembersPage() {
     qualAusb: canViewAll || viewer.id === m.id || Boolean(m.publicQualifications) ? (m.qualAusb ?? null) : null,
     einsatzort: canViewAll || viewer.id === m.id || Boolean(m.publicQualifications) ? (m.einsatzort ?? null) : null,
     locked: m.locked ?? false,
+    pendingRegistration: pendingRegistrationIds.has(m.id),
   }));
 
   const canCreate = viewer.role === "ADMIN";
