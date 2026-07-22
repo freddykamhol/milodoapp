@@ -81,21 +81,47 @@ export async function sendSmtpMail(message: Omit<Mail.Options, "from" | "sender"
     ? `<${crypto.randomBytes(16).toString("hex")}@${fromDomain}>`
     : undefined;
 
-  await transporter.sendMail({
-    ...message,
-    from: { name: SMTP_FROM_NAME, address: smtp.config.fromEmail },
-    sender: smtp.config.fromEmail,
-    replyTo: message.replyTo ?? smtp.config.fromEmail,
-    messageId: message.messageId ?? messageId,
-    envelope: {
-      from: smtp.config.fromEmail,
-      to: envelopeRecipients,
-    },
-    headers: {
-      "X-Auto-Response-Suppress": "All",
-      ...(message.headers ?? {}),
-    },
-  });
+  if (!envelopeRecipients.length) {
+    return { ok: false as const, error: "smtp_recipient_missing" as const };
+  }
 
-  return { ok: true as const };
+  try {
+    const info = await transporter.sendMail({
+      ...message,
+      from: { name: SMTP_FROM_NAME, address: smtp.config.fromEmail },
+      sender: smtp.config.fromEmail,
+      replyTo: message.replyTo ?? smtp.config.fromEmail,
+      messageId: message.messageId ?? messageId,
+      envelope: {
+        from: smtp.config.fromEmail,
+        to: envelopeRecipients,
+      },
+      headers: {
+        "X-Auto-Response-Suppress": "All",
+        ...(message.headers ?? {}),
+      },
+    });
+
+    const accepted = (info.accepted ?? []).map(String);
+    const rejected = (info.rejected ?? []).map(String);
+    if (rejected.length || !accepted.length) {
+      console.error("SMTP server rejected recipients", {
+        messageId: info.messageId,
+        accepted,
+        rejected,
+        response: info.response,
+      });
+      return {
+        ok: false as const,
+        error: "smtp_rejected" as const,
+        accepted,
+        rejected,
+        response: String(info.response ?? ""),
+      };
+    }
+
+    return { ok: true as const, messageId: String(info.messageId ?? messageId ?? ""), accepted };
+  } finally {
+    transporter.close();
+  }
 }

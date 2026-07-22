@@ -206,6 +206,10 @@ export async function createRegisteredMember({
     return { ok: true as const, id: inserted.id, username: inserted.username };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error ?? "");
+    console.error("Member registration could not be created", {
+      formId,
+      error: message,
+    });
     if (message.includes("users.email")) return { ok: false as const, error: "email_exists" };
     if (message.includes("users.username")) return { ok: false as const, error: "username_exists" };
     if (message.includes("member_registration_submissions")) {

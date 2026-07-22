@@ -6,6 +6,7 @@ type FormMeta = {
   title: string;
   role: string;
   verificationMode: "ADMIN" | "PASSWORD";
+  requiresVerificationPassword: boolean;
   passwordMode: "SELF" | "GENERATED";
   expiresAt: string;
   userLimit: number;
@@ -70,7 +71,7 @@ export function RegistrationClient({ token }: { token: string }) {
     if (!form.email.trim()) return "E-Mail fehlt.";
     if (form.password.length < 8) return "Das Passwort muss mindestens 8 Zeichen lang sein.";
     if (form.password !== form.passwordRepeat) return "Die Passwörter stimmen nicht überein.";
-    if (meta?.verificationMode === "PASSWORD" && !form.verificationPassword.trim()) return "Das Formular-Passwort fehlt.";
+    if (meta?.requiresVerificationPassword && !form.verificationPassword.trim()) return "Das Formular-Passwort fehlt.";
     return null;
   }
 
@@ -109,7 +110,10 @@ export function RegistrationClient({ token }: { token: string }) {
         | { ok: true; username: string; pendingApproval: boolean }
         | { ok?: false; error?: string }
         | null;
-      if (!res.ok || !json?.ok) throw new Error(errorText(json && "error" in json ? json.error : undefined));
+      if (!res.ok || !json?.ok) {
+        const apiError = json && "error" in json ? json.error : undefined;
+        throw new Error(apiError ? errorText(apiError) : `Serverfehler (${res.status}). Bitte versuche es erneut.`);
+      }
 
       setResult(json);
       setStatus("done");
@@ -167,7 +171,7 @@ export function RegistrationClient({ token }: { token: string }) {
               <TextInput type="password" label="Passwort" value={form.password} onChange={(password) => setForm((v) => ({ ...v, password }))} />
               <TextInput type="password" label="Passwort wiederholen" value={form.passwordRepeat} onChange={(passwordRepeat) => setForm((v) => ({ ...v, passwordRepeat }))} />
 
-              {meta?.verificationMode === "PASSWORD" ? (
+              {meta?.requiresVerificationPassword ? (
                 <label className="block md:col-span-2">
                   <span className="text-xs font-semibold text-[color:var(--muted)]">Formular-Passwort</span>
                   <input
@@ -263,9 +267,11 @@ function errorText(error?: string) {
   if (error === "invalid_email") return "Bitte gib eine gültige E-Mail ein.";
   if (error === "invalid_name") return "Vor- und Nachname fehlen.";
   if (error === "invalid_password") return "Das Passwort muss mindestens 8 Zeichen lang sein.";
+  if (error === "invalid_geb") return "Das Geburtsdatum ist ungültig.";
   if (error === "invalid_verification_password") return "Das Formular-Passwort ist nicht korrekt.";
   if (error === "email_exists") return "Diese E-Mail-Adresse ist bereits vergeben.";
   if (error === "username_exists") return "Für diese Angaben existiert bereits ein Benutzername.";
+  if (error === "username_failed") return "Aus Vor- und Nachname konnte kein Benutzername erstellt werden.";
   if (error === "registration_tables_missing") return "Die Registrierungstabellen fehlen noch. Bitte Migrationen ausführen.";
   if (error === "create_failed") return "Der Benutzer konnte nicht angelegt werden.";
   return "Registrierung fehlgeschlagen.";

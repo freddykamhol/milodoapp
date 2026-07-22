@@ -318,12 +318,13 @@ export function IntegrationsClient({
     setTestState(null);
     try {
       const res = await fn();
+      const data = (await res.json().catch(() => null)) as { message?: string } | null;
       if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { message?: string } | null;
         window.alert(data?.message || "Test fehlgeschlagen.");
         setTestState({ key, ok: false });
         return;
       }
+      if (data?.message) window.alert(data.message);
       setTestState({ key, ok: true });
       window.setTimeout(() => setTestState(null), 1800);
     } finally {
@@ -357,7 +358,7 @@ export function IntegrationsClient({
       {isAdmin && smtp ? (
         <Card
           title="Mail"
-          description="Nur SMTP-Festlegung (Versand später)."
+          description="SMTP-Versand mit echtem Zustellungstest und Authentifizierungsprüfung."
           actions={
             <button
               type="button"

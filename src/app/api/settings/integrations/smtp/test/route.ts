@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import dns from "node:dns/promises";
 
 import { getViewer } from "@/lib/viewer";
-import { createSmtpTransporter, getSmtpConfig } from "@/lib/smtp-mail";
+import { getSmtpConfig, sendSmtpMail } from "@/lib/smtp-mail";
 
 export const runtime = "nodejs";
 
@@ -63,12 +63,33 @@ export async function POST() {
 
   const smtp = await getSmtpConfig();
   if (!smtp.ok) return NextResponse.json({ ok: false, error: smtp.error }, { status: 400 });
+  if (!viewer.email?.trim()) {
+    return NextResponse.json(
+      { ok: false, error: "viewer_email_missing", message: "Im eigenen Profil ist keine Test-E-Mail-Adresse hinterlegt." },
+      { status: 400 },
+    );
+  }
   const diagnostics = await buildMailAuthDiagnostics(smtp.config.fromEmail);
 
   try {
-    const transporter = createSmtpTransporter(smtp.config);
-    await transporter.verify();
-    return NextResponse.json({ ok: true, diagnostics });
+    const result = await sendSmtpMail({
+      to: viewer.email.trim(),
+      subject: "[Milodo] SMTP-Zustellungstest",
+      text: "Diese Nachricht bestätigt, dass der Milodo SMTP-Versand vom Mailserver angenommen wurde.",
+      html: "<p>Diese Nachricht bestätigt, dass der <strong>Milodo SMTP-Versand</strong> vom Mailserver angenommen wurde.</p>",
+    });
+    if (!result.ok) {
+      return NextResponse.json(
+        { ok: false, error: result.error, message: "Der SMTP-Server hat die Testnachricht nicht angenommen.", diagnostics },
+        { status: 400 },
+      );
+    }
+    const warning = diagnostics.notes.length ? ` Hinweise: ${diagnostics.notes.join(" ")}` : "";
+    return NextResponse.json({
+      ok: true,
+      diagnostics,
+      message: `Testmail wurde vom SMTP-Server für ${viewer.email.trim()} angenommen.${warning}`,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "SMTP verify failed";
     return NextResponse.json({ ok: false, error: "verify_failed", message: msg, diagnostics }, { status: 400 });

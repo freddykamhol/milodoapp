@@ -22,6 +22,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       title: form.title,
       role: form.role,
       verificationMode: form.verificationMode,
+      requiresVerificationPassword: Boolean(form.verificationPasswordHash),
       passwordMode: form.passwordMode,
       expiresAt: form.expiresAt.toISOString(),
       userLimit: form.userLimit,
@@ -42,6 +43,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   if (
     form.verificationMode === "PASSWORD" &&
+    Boolean(form.verificationPasswordHash) &&
     !verifyRegistrationPassword(String(body.verificationPassword ?? ""), form.verificationPasswordHash)
   ) {
     return NextResponse.json({ ok: false, error: "invalid_verification_password" }, { status: 400 });
