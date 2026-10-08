@@ -69,6 +69,17 @@ function asBool(v: unknown) {
   return v === true || v === 1 || v === "1" || v === "true";
 }
 
+function detailSections(value: unknown, path = "Zusatzangabe"): Array<{ label: string; value: string }> {
+  if (value == null || value === "") return [];
+  if (Array.isArray(value)) return value.flatMap((entry, index) => detailSections(entry, `${path} ${index + 1}`));
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, entry]) =>
+      detailSections(entry, path === "Zusatzangabe" ? key : `${path} · ${key}`),
+    );
+  }
+  return [{ label: path, value: String(value) }];
+}
+
 function requestIp(request: Request): string {
   const xfwd = String(request.headers.get("x-forwarded-for") ?? "").trim();
   if (xfwd) return xfwd.split(",")[0]!.trim();
@@ -174,20 +185,26 @@ export async function POST(request: Request) {
 
   const id = inserted?.[0]?.id ?? null;
 
-  const subject = `[Website] Kontaktanfrage #${id ?? "?"} (${mode})`;
+  const requestType = mode.toLowerCase() === "kontakt" ? "KONTAKTANFRAGE" : mode.replaceAll("_", " ").trim() || "KONTAKTANFRAGE";
+  const subject = `[Milodo] ${requestType.toUpperCase()} #${id ?? "?"}`;
+  const allSections = [
+    { label: "Anfrageart", value: requestType },
+    { label: "Referenz", value: id ? `#${id}` : "-" },
+    { label: "Name", value: name },
+    { label: "Firma", value: company || "-" },
+    { label: "E-Mail", value: email },
+    { label: "Telefon", value: phone || "-" },
+    { label: "Quelle", value: sourceUrl || "-" },
+    { label: "Nachricht", value: message || "-" },
+    ...detailSections(body.details),
+  ];
   const emailRes = await sendContactInquiryEmail({
     subject,
     preheader: `Neue Anfrage von ${name}`,
-    sections: [
-      { label: "Referenz", value: id ? `#${id}` : "-" },
-      { label: "Typ", value: mode },
-      { label: "Name", value: name },
-      { label: "Firma", value: company || "-" },
+    sections: allSections,
+    /* legacy section list removed; allSections contains the complete payload.
       { label: "E‑Mail", value: email },
-      { label: "Telefon", value: phone || "-" },
-      { label: "Quelle", value: sourceUrl || "-" },
-      { label: "Nachricht", value: message || "-" },
-    ],
+    */
   });
 
   return json(200, { ok: true, id, email: emailRes.ok ? "sent" : emailRes.error }, origin);

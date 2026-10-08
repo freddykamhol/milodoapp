@@ -39,6 +39,23 @@ function formatInquiryTimeRange(startAt: Date, endAt: Date | null) {
   return `${fmt.format(startAt)}–${timeFmt.format(endAt)}`;
 }
 
+function serviceTypeLabel(value: string) {
+  if (value === "RD_BOERSE") return "Rettungsdienst-Börse";
+  if (value === "SANITATSDIENST") return "Sanitätsdienst";
+  return "Erste Hilfe";
+}
+
+type InquiryDetails = {
+  visitors?: unknown;
+  assets?: Array<{ count?: unknown; item?: unknown }>;
+  participants?: unknown[];
+  notes?: unknown;
+};
+
+function listLabel<T>(items: unknown, render: (item: T) => string) {
+  return Array.isArray(items) ? items.map(render).filter(Boolean).join("\n") || "—" : "—";
+}
+
 async function sendInquiryTelegram({
   kind,
   appointmentId,
@@ -80,6 +97,7 @@ async function sendInquiryEmail({
   startAt,
   endAt,
   reqLabel,
+  sections,
 }: {
   prefKey: "URGENT_REQUESTS" | "REQUESTS_GENERAL";
   appointmentId: number;
@@ -87,10 +105,11 @@ async function sendInquiryEmail({
   startAt: Date;
   endAt: Date | null;
   reqLabel: string;
+  sections: Array<{ label: string; value: string }>;
 }) {
   const when = formatInquiryTimeRange(startAt, endAt);
   const url = `${getAppUrl()}/appointments/${appointmentId}`;
-  const subject = prefKey === "URGENT_REQUESTS" ? "[Milodo] AKUTE ABFRAGE" : "[Milodo] Dienstabfrage";
+  const subject = prefKey === "URGENT_REQUESTS" ? "[Milodo] AKUTE ABFRAGE" : "[Milodo] DIENSTABFRAGE";
   const preheader = `${title} • ${when}`;
 
   const targetRows = await db
@@ -101,16 +120,12 @@ async function sendInquiryEmail({
 
   const emails = Array.from(new Set(targetRows.map((r) => String(r.email || "").trim()).filter(Boolean)));
   for (const to of emails) {
-    const text = `${title}\n${when}\n${reqLabel}\n\nDirekt zum Dienst: ${url}`;
+    const text = `${subject.replace(/^\[Milodo\]\s*/, "")}\n\n${sections.map((s) => `${s.label}: ${s.value}`).filter(Boolean).join("\n")}\n\nDirekt zum Dienst: ${url}`;
     const html = buildEmailHtml({
       preheader,
       title: subject.replace(/^\[Milodo\]\s*/, ""),
       intro: "Wir suchen Personal für folgenden Dienst:",
-      sections: [
-        { label: "Dienst", value: title },
-        { label: "Zeit", value: when },
-        { label: "Anforderung", value: reqLabel },
-      ],
+      sections,
       button: { label: "Direkt zum Dienst", url },
     });
     const result = await sendSmtpMail({
@@ -194,7 +209,8 @@ export async function triggerAppointmentInquiry(
 ): Promise<AppointmentInquiryResult> {
   const appointment = await db.query.appointments.findFirst({
     where: (t, { eq }) => eq(t.id, appointmentId),
-    columns: { id: true, title: true, startAt: true, endAt: true },
+    columns: { id: true, title: true, startAt: true, endAt: true, bereich: true, dienstart: true, eventName: true, notes: true, einsatzort: true, detailsJson: true },
+    with: { customer: { columns: { name: true, contactName: true, street: true, houseNumber: true, plz: true, city: true, email: true, phone: true } } },
   });
   if (!appointment) throw new Error("not_found");
 
@@ -204,6 +220,33 @@ export async function triggerAppointmentInquiry(
     .where(eq(appointmentRequirements.appointmentId, appointmentId));
 
   const reqLabel = buildRequirementsLabel(reqs.map((r) => ({ minCount: r.minCount, value: r.value })));
+  let details: InquiryDetails = {};
+  try {
+    details = JSON.parse(appointment.detailsJson || "{}") as InquiryDetails;
+  } catch {
+    details = {};
+  }
+  const customer = appointment.customer;
+  const customerAddress = [customer?.street, customer?.houseNumber].filter(Boolean).join(" ");
+  const customerCity = [customer?.plz, customer?.city].filter(Boolean).join(" ");
+  const sections = [
+    { label: "Anfrageart", value: kind === "URGENT_REQUESTS" ? "AKUTE ABFRAGE" : "DIENSTABFRAGE" },
+    { label: "Bereich", value: serviceTypeLabel(appointment.bereich) },
+    { label: "Veranstaltung / Dienst", value: appointment.eventName || appointment.title },
+    { label: "RD-Dienstart", value: appointment.dienstart === "S_RTW" ? "S-RTW" : appointment.dienstart || "" },
+    { label: "Zeit", value: formatInquiryTimeRange(appointment.startAt, appointment.endAt ?? null) },
+    { label: "Kunde", value: customer?.name || "" },
+    { label: "Ansprechpartner", value: customer?.contactName || "" },
+    { label: "Kundenadresse", value: [customerAddress, customerCity].filter(Boolean).join(", ") },
+    { label: "Kunden-E-Mail", value: customer?.email || "" },
+    { label: "Kunden-Telefon", value: customer?.phone || "" },
+    { label: "Einsatzort", value: appointment.einsatzort },
+    { label: "Besucherzahl", value: details.visitors == null ? "" : String(details.visitors) },
+    { label: "Anforderung", value: reqLabel.replace(/^Angefordertes Personal:\s*/, "") },
+    { label: "Material / Fahrzeuge", value: listLabel<{ count?: unknown; item?: unknown }>(details.assets, (a) => `${a.count}× ${a.item}`) },
+    { label: "Teilnehmer", value: listLabel<unknown>(details.participants, (p) => String(p).trim()) },
+    { label: "Bemerkung", value: appointment.notes || String(details.notes || "") },
+  ];
 
   const base = {
     appointmentId,
@@ -211,6 +254,7 @@ export async function triggerAppointmentInquiry(
     startAt: appointment.startAt,
     endAt: appointment.endAt ?? null,
     reqLabel,
+    sections,
   };
 
   async function runTelegram(): Promise<InquiryChannelResult> {

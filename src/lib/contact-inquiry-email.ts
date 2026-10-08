@@ -1,19 +1,15 @@
 import { buildEmailHtml } from "@/lib/email";
 import { sendSmtpMail } from "@/lib/smtp-mail";
 
-function requiredToEmail() {
-  const to = String(process.env.CONTACT_INQUIRY_TO_EMAIL ?? "").trim();
-  return to || null;
-}
+const CONTACT_INQUIRY_TO = "anfrage@milodo-medical.de";
+// Temporärer BCC: entfernen, sobald die Übergangsphase beendet ist.
+const CONTACT_INQUIRY_BCC = "f.karamazmy@katechnologies.de";
 
 export async function sendContactInquiryEmail(props: {
   subject: string;
   sections: Array<{ label: string; value: string }>;
   preheader?: string;
 }) {
-  const to = requiredToEmail();
-  if (!to) return { ok: false as const, error: "to_missing" as const };
-
   const intro = "Neue Kontaktanfrage über die Website.";
   const text = `${intro}\n\n${props.sections.map((s) => `${s.label}: ${s.value}`).join("\n")}\n\nMilodo`;
   const html = buildEmailHtml({
@@ -24,5 +20,11 @@ export async function sendContactInquiryEmail(props: {
     footerNote: "Diese E‑Mail wurde automatisch erstellt.",
   });
 
-  return sendSmtpMail({ to, subject: props.subject, text, html });
+  return sendSmtpMail({
+    to: CONTACT_INQUIRY_TO,
+    bcc: CONTACT_INQUIRY_BCC,
+    subject: props.subject,
+    text,
+    html,
+  });
 }

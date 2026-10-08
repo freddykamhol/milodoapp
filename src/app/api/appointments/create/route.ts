@@ -54,6 +54,20 @@ function formatHoursLabel(startAt: Date, endAt: Date) {
   return `${String(rounded).replace(".", ",")}h`;
 }
 
+function serviceTypeLabel(serviceType: ServiceType) {
+  if (serviceType === "RD_BOERSE") return "Rettungsdienst-Börse";
+  if (serviceType === "SANITATSDIENST") return "Sanitätsdienst";
+  return "Erste Hilfe";
+}
+
+function rdTypeLabel(rdType: RdType | null) {
+  return rdType === "S_RTW" ? "S-RTW" : rdType || "—";
+}
+
+function listLabel<T>(items: T[], render: (item: T) => string) {
+  return items.map(render).filter(Boolean).join("\n") || "—";
+}
+
 async function sendCustomerMail({ to, username, password }: { to: string; username: string; password: string }) {
   const appUrl = getAppUrl();
 
@@ -398,6 +412,7 @@ export async function POST(request: Request) {
     visitors: body.visitors ?? null,
     participants: Array.isArray(body.participants) ? body.participants : [],
     assets: Array.isArray(body.assets) ? body.assets : [],
+    notes: String(body.notes ?? "").trim(),
   };
 
   const inserted = await db
@@ -486,22 +501,37 @@ export async function POST(request: Request) {
     }
 
     const when = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(startAt);
+    const whenRange = `${when}–${new Intl.DateTimeFormat("de-DE", { timeStyle: "short" }).format(endAt)}`;
     const url = `${getAppUrl()}/appointments/${appointmentId}`;
+    const requestSections = [
+      { label: "Anfrageart", value: "Kundenanforderung" },
+      { label: "Bereich", value: serviceTypeLabel(serviceType) },
+      { label: "Veranstaltung / Dienst", value: eventName || title },
+      { label: "RD-Dienstart", value: serviceType === "RD_BOERSE" ? rdTypeLabel(dienstart) : "" },
+      { label: "Termin", value: whenRange },
+      { label: "Kunde", value: customerRow.name },
+      { label: "Ansprechpartner", value: customerRow.contactName },
+      { label: "Kundenadresse", value: customerAddrFull },
+      { label: "E-Mail", value: customerRow.email },
+      { label: "Telefon", value: customerRow.phone },
+      { label: "Einsatzort", value: einsatzort },
+      { label: "Besucherzahl", value: body.visitors == null ? "" : String(body.visitors) },
+      { label: "Personalbedarf", value: listLabel(reqs, (r) => `mind. ${Math.max(1, Math.round(Number(r.minCount ?? 1)))}× ${String(r.value ?? "").trim()}`) },
+      { label: "Material / Fahrzeuge", value: listLabel(body.assets ?? [], (a) => `${a.count}× ${a.item}`) },
+      { label: "Teilnehmer", value: listLabel(body.participants ?? [], (p) => String(p).trim()) },
+      { label: "Bemerkung", value: String(body.notes ?? "").trim() },
+    ];
 
     // customer confirmation mail (always, if SMTP enabled)
     const customerTo = String(viewer.email || customerRow.email || "").trim();
     if (customerTo) {
       void sendNotificationEmail({
         to: customerTo,
-        subject: "[Milodo] Dienst angefordert",
+        subject: "[Milodo] Kundenanforderung",
         preheader: `${title} • ${when}`,
-        title: "Dienst angefordert",
+        title: "Kundenanforderung",
         intro: "Wir haben deine Anforderung erhalten. Nach Freigabe wird die Abfrage gestartet.",
-        sections: [
-          { label: "Dienst", value: title },
-          { label: "Zeit", value: when },
-          { label: "Einsatzort", value: einsatzort },
-        ],
+        sections: requestSections,
         button: { label: "Zum Dienst", url },
       }).catch(() => null);
     }
@@ -525,16 +555,11 @@ export async function POST(request: Request) {
         adminEmails.map((to) =>
           sendNotificationEmail({
             to,
-            subject: "[Milodo] Neue Kundenanforderung",
+            subject: "[Milodo] Kundenanforderung",
             preheader: `${customerRow.name} • ${when}`,
-            title: "Neue Kundenanforderung",
+            title: "Kundenanforderung",
             intro: "Ein Kunde hat einen Dienst angefordert.",
-            sections: [
-              { label: "Kunde", value: customerRow.name },
-              { label: "Dienst", value: title },
-              { label: "Zeit", value: when },
-              { label: "Einsatzort", value: einsatzort },
-            ],
+            sections: requestSections,
             button: { label: "Zum Dienst", url },
           }).catch(() => null),
         ),
