@@ -19,6 +19,14 @@ async function resolveTxtFlat(name: string) {
   }
 }
 
+async function hasDkimDnsRecord(name: string) {
+  const [cnames, txt] = await Promise.all([
+    dns.resolveCname(name).catch(() => [] as string[]),
+    resolveTxtFlat(name),
+  ]);
+  return cnames.length > 0 || txt.some((record) => record.toLowerCase().startsWith("v=dkim1"));
+}
+
 async function buildMailAuthDiagnostics(fromEmail: string) {
   const domain = emailDomain(fromEmail);
   if (!domain) {
@@ -27,6 +35,8 @@ async function buildMailAuthDiagnostics(fromEmail: string) {
       spf: false,
       dmarc: false,
       dkimEnvConfigured: false,
+      dkimDnsConfigured: false,
+      dkimDnsSelectors: [],
       notes: ["From E-Mail hat keine gültige Domain."],
     };
   }
@@ -43,15 +53,25 @@ async function buildMailAuthDiagnostics(fromEmail: string) {
       String(process.env.SMTP_DKIM_SELECTOR ?? "").trim() &&
       String(process.env.SMTP_DKIM_PRIVATE_KEY ?? "").trim(),
   );
+  const envSelector = String(process.env.SMTP_DKIM_SELECTOR ?? "").trim();
+  const selectors = [...new Set([envSelector, "key1", "key2"].filter(Boolean))];
+  const selectorResults = await Promise.all(
+    selectors.map(async (selector) => ({
+      selector,
+      configured: await hasDkimDnsRecord(`${selector}._domainkey.${domain}`),
+    })),
+  );
+  const dkimDnsSelectors = selectorResults.filter((result) => result.configured).map((result) => result.selector);
+  const dkimDnsConfigured = dkimDnsSelectors.length > 0;
 
   const notes: string[] = [];
   if (!spf) notes.push(`Kein SPF TXT Record für ${domain} gefunden.`);
   if (!dmarc) notes.push(`Kein DMARC TXT Record für _dmarc.${domain} gefunden.`);
-  if (!dkimEnvConfigured) {
-    notes.push("DKIM ist in der App nicht konfiguriert. Outlook/GMX stufen Mails ohne DKIM oft strenger ein.");
+  if (!dkimEnvConfigured && !dkimDnsConfigured) {
+    notes.push("Kein DKIM-Schlüssel in der App und kein DKIM-DNS-Eintrag gefunden.");
   }
 
-  return { domain, spf, dmarc, dkimEnvConfigured, notes };
+  return { domain, spf, dmarc, dkimEnvConfigured, dkimDnsConfigured, dkimDnsSelectors, notes };
 }
 
 export async function POST() {

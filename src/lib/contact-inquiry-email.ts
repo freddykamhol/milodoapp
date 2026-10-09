@@ -1,5 +1,6 @@
 import { buildEmailHtml } from "@/lib/email";
 import { sendSmtpMail } from "@/lib/smtp-mail";
+import path from "node:path";
 
 const CONTACT_INQUIRY_TO = "anfrage@milodo-medical.de";
 // Temporärer BCC: entfernen, sobald die Übergangsphase beendet ist.
@@ -17,6 +18,7 @@ export async function sendContactInquiryEmail(props: {
     title: props.subject,
     intro,
     sections: props.sections,
+    logoCid: "milodo-logo@milodo-medical.de",
     footerNote: "Diese E‑Mail wurde automatisch erstellt.",
   });
 
@@ -26,5 +28,13 @@ export async function sendContactInquiryEmail(props: {
     subject: props.subject,
     text,
     html,
+    attachments: [
+      {
+        filename: "milodo-logo.png",
+        path: path.join(process.cwd(), "public", "logo", "MILODO.png"),
+        cid: "milodo-logo@milodo-medical.de",
+        contentDisposition: "inline",
+      },
+    ],
   });
 }

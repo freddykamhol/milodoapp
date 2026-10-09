@@ -3,12 +3,13 @@ import { and, eq } from "drizzle-orm";
 
 import { memberRegistrationSubmissions, users } from "@/db/schema";
 import { db } from "@/lib/db";
+import { getAppUrl } from "@/lib/app-url";
 import { sendMemberRegistrationApprovedEmail } from "@/lib/member-registration-email";
 import { getViewer } from "@/lib/viewer";
 
 export const runtime = "nodejs";
 
-export async function POST(_request: Request, { params }: { params: Promise<{ userId: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ userId: string }> }) {
   const viewer = await getViewer();
   if (!viewer) return NextResponse.json({ ok: false, error: "no_viewer" }, { status: 401 });
   if (viewer.role !== "ADMIN") return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
@@ -43,7 +44,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ us
   let emailSent = false;
   if (user?.email) {
     try {
-      const result = await sendMemberRegistrationApprovedEmail({ to: user.email, username: user.username });
+      const result = await sendMemberRegistrationApprovedEmail({
+        to: user.email,
+        username: user.username,
+        loginUrl: `${getAppUrl({ fallbackOrigin: new URL(request.url).origin })}/login`,
+      });
       emailSent = result.ok;
     } catch {
       emailSent = false;

@@ -21,7 +21,11 @@ export function RegistrationClient({ token }: { token: string }) {
   const [status, setStatus] = React.useState<"loading" | "ready" | "done" | "error">("loading");
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const [result, setResult] = React.useState<{ username: string; pendingApproval: boolean } | null>(null);
+  const [result, setResult] = React.useState<{
+    username: string;
+    pendingApproval: boolean;
+    emailSent: boolean;
+  } | null>(null);
   const [form, setForm] = React.useState({
     firstName: "",
     lastName: "",
@@ -107,7 +111,7 @@ export function RegistrationClient({ token }: { token: string }) {
         }),
       });
       const json = (await res.json().catch(() => null)) as
-        | { ok: true; username: string; pendingApproval: boolean }
+        | { ok: true; username: string; pendingApproval: boolean; emailSent: boolean }
         | { ok?: false; error?: string }
         | null;
       if (!res.ok || !json?.ok) {
@@ -148,6 +152,11 @@ export function RegistrationClient({ token }: { token: string }) {
               <p className="text-sm text-[color:var(--muted)]">
                 Dein Benutzername ist <span className="font-semibold text-[color:var(--foreground)]">@{result.username}</span>.
                 {result.pendingApproval ? " Dein Konto wartet jetzt auf Admin-Bestätigung." : " Dein Konto ist direkt nutzbar."}
+              </p>
+              <p className="text-sm text-[color:var(--muted)]">
+                {result.emailSent
+                  ? "Eine Bestätigung wurde an deinen Mailserver übergeben."
+                  : "Die Bestätigungsmail konnte nicht versendet werden. Deine Registrierung ist trotzdem gespeichert."}
               </p>
             </div>
           </Panel>

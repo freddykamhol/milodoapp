@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 
+import { getAppUrl } from "@/lib/app-url";
 import {
   createRegisteredMember,
   findActiveRegistrationForm,
   verifyRegistrationPassword,
   type MemberRegistrationPayload,
 } from "@/lib/member-registration";
+import {
+  sendMemberRegistrationReceivedEmail,
+  sendMemberRegistrationWelcomeEmail,
+} from "@/lib/member-registration-email";
 
 export const runtime = "nodejs";
 
@@ -59,9 +64,40 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
   if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
 
+  const pendingApproval = form.verificationMode === "ADMIN";
+  const email = String(body.email ?? "").trim().toLowerCase();
+  let emailSent = false;
+  try {
+    const mailResult = pendingApproval
+      ? await sendMemberRegistrationReceivedEmail({
+          to: email,
+          username: result.username,
+        })
+      : await sendMemberRegistrationWelcomeEmail({
+          to: email,
+          username: result.username,
+          loginUrl: `${getAppUrl({ fallbackOrigin: new URL(request.url).origin })}/login`,
+        });
+    emailSent = mailResult.ok;
+    if (!mailResult.ok) {
+      console.error("Member registration confirmation email was not sent", {
+        formId: form.id,
+        userId: result.id,
+        error: mailResult.error,
+      });
+    }
+  } catch (error) {
+    console.error("Member registration confirmation email failed", {
+      formId: form.id,
+      userId: result.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   return NextResponse.json({
     ok: true,
     username: result.username,
-    pendingApproval: form.verificationMode === "ADMIN",
+    pendingApproval,
+    emailSent,
   });
 }

@@ -16,6 +16,7 @@ export function buildEmailHtml({
   sections,
   button,
   footerNote,
+  logoCid,
 }: {
   preheader?: string;
   title: string;
@@ -23,6 +24,7 @@ export function buildEmailHtml({
   sections?: Array<{ label: string; value: string }>;
   button?: Button;
   footerNote?: string;
+  logoCid?: string;
 }) {
   const safeTitle = escapeHtml(title);
   const safeIntro = intro ? escapeHtml(intro).replaceAll("\n", "<br/>") : "";
@@ -68,23 +70,25 @@ export function buildEmailHtml({
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;">
             <tr>
               <td style="padding:10px 2px 14px 2px;">
-                <div style="display:inline-flex;align-items:center;gap:10px;">
-                  <div style="width:34px;height:34px;border-radius:12px;background:#0b1220;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;letter-spacing:0.5px;">M</div>
-                  <div style="font-size:13px;color:#111827;font-weight:800;">Milodo</div>
-                </div>
+                ${logoCid
+                  ? `<img src="cid:${escapeHtml(logoCid)}" alt="MILODO Medical Group" width="190" style="display:block;width:190px;max-width:70%;height:auto;border:0;" />`
+                  : `<div style="font-size:16px;color:#111827;font-weight:900;letter-spacing:0.08em;">MILODO</div>`}
               </td>
             </tr>
             <tr>
-              <td style="background:#ffffff;border:1px solid #e6ebf2;border-radius:20px;box-shadow:0 12px 30px rgba(11,18,32,0.06);padding:22px;">
-                <div style="font-size:18px;line-height:24px;color:#0b1220;font-weight:900;">${safeTitle}</div>
+              <td style="background:#ffffff;border:1px solid #e6ebf2;border-radius:20px;box-shadow:0 12px 30px rgba(11,18,32,0.06);overflow:hidden;">
+                <div style="height:6px;background:#e11d48;font-size:0;line-height:0;">&nbsp;</div>
+                <div style="padding:24px;">
+                <div style="font-size:22px;line-height:28px;color:#0b1220;font-weight:900;">${safeTitle}</div>
                 ${safeIntro ? `<div style="margin-top:10px;font-size:14px;line-height:20px;color:#4b5563;font-weight:600;">${safeIntro}</div>` : ""}
 
                 ${rows ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:16px;">${rows}</table>` : ""}
 
                 ${buttonHtml}
 
-                <div style="margin-top:22px;font-size:12px;line-height:18px;color:#6b7280;font-weight:600;">
+                <div style="margin-top:22px;padding-top:16px;border-top:1px solid #eef2f7;font-size:12px;line-height:18px;color:#6b7280;font-weight:600;">
                   ${safeFooter || "Wenn du diese Nachricht unerwartet erhalten hast, kannst du sie ignorieren."}
+                </div>
                 </div>
               </td>
             </tr>

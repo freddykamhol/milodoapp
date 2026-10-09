@@ -5,6 +5,7 @@ import { contactInquiries } from "@/db/schema";
 import { sendContactInquiryEmail } from "@/lib/contact-inquiry-email";
 import { ensureContactInquiriesTable } from "@/lib/contact-inquiries";
 import { isIpBlocked } from "@/lib/ip-blocklist";
+import { displayFieldValue, fieldLabel, requestTypeLabel } from "@/lib/contact-inquiry-labels";
 
 export const runtime = "nodejs";
 
@@ -74,10 +75,10 @@ function detailSections(value: unknown, path = "Zusatzangabe"): Array<{ label: s
   if (Array.isArray(value)) return value.flatMap((entry, index) => detailSections(entry, `${path} ${index + 1}`));
   if (typeof value === "object") {
     return Object.entries(value as Record<string, unknown>).flatMap(([key, entry]) =>
-      detailSections(entry, path === "Zusatzangabe" ? key : `${path} · ${key}`),
+      detailSections(entry, path === "Zusatzangabe" ? fieldLabel(key) : `${path} · ${fieldLabel(key)}`),
     );
   }
-  return [{ label: path, value: String(value) }];
+  return [{ label: path, value: displayFieldValue(value) }];
 }
 
 function requestIp(request: Request): string {
@@ -185,8 +186,8 @@ export async function POST(request: Request) {
 
   const id = inserted?.[0]?.id ?? null;
 
-  const requestType = mode.toLowerCase() === "kontakt" ? "KONTAKTANFRAGE" : mode.replaceAll("_", " ").trim() || "KONTAKTANFRAGE";
-  const subject = `[Milodo] ${requestType.toUpperCase()} #${id ?? "?"}`;
+  const requestType = requestTypeLabel(mode);
+  const subject = `[MILODO] ${requestType} #${id ?? "?"}`;
   const allSections = [
     { label: "Anfrageart", value: requestType },
     { label: "Referenz", value: id ? `#${id}` : "-" },
