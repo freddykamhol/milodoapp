@@ -209,48 +209,26 @@ body {
   border-bottom-color: color-mix(in oklab, var(--accent) 65%, transparent);
 }
 
-.rich-markdown-editor > p.rich-editor-paragraph,
-.rich-markdown-editor > p {
-  margin: 0 0 1rem;
-  min-height: 1.5em;
+.blog-rich-content {
+  font-size: 14px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
-
-.rich-markdown-editor > p:last-child,
-.rich-markdown-editor > h1:last-child,
-.rich-markdown-editor > h2:last-child,
-.rich-markdown-editor > h3:last-child {
-  margin-bottom: 0;
-}
-
-.rich-markdown-editor > h1,
-.rich-markdown-editor > h2,
-.rich-markdown-editor > h3 {
-  margin: 1.25rem 0 0.75rem;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.rich-markdown-editor > h1:first-child,
-.rich-markdown-editor > h2:first-child,
-.rich-markdown-editor > h3:first-child {
-  margin-top: 0;
-}
-
-.rich-markdown-editor > h1,
-.rich-editor-heading-1 { font-size: 1.75rem; }
-.rich-markdown-editor > h2,
-.rich-editor-heading-2 { font-size: 1.4rem; }
-.rich-markdown-editor > h3,
-.rich-editor-heading-3 { font-size: 1.15rem; }
-
-.rich-markdown-editor > ul,
-.rich-markdown-editor > ol {
-  margin: 0 0 1rem;
-  padding-left: 1.5rem;
-}
-
-.rich-markdown-editor > blockquote {
-  margin: 0 0 1rem;
-  border-left: 3px solid var(--accent);
-  padding-left: 0.75rem;
-}
+.blog-rich-content p,
+.blog-rich-content div { margin: 0; }
+.blog-rich-content p:empty,
+.blog-rich-content div:empty { min-height: 1.5em; }
+.blog-rich-content h1 { font-size: 2em; }
+.blog-rich-content h2 { font-size: 1.5em; }
+.blog-rich-content h3 { font-size: 1.17em; }
+.blog-rich-content h1,
+.blog-rich-content h2,
+.blog-rich-content h3 { font-weight: bold; line-height: 1.2; }
+.blog-rich-content ul { list-style-type: disc; padding-left: 1.5em; }
+.blog-rich-content ol { list-style-type: decimal; padding-left: 1.5em; }
+.blog-rich-content blockquote { border-left: 3px solid var(--accent); padding-left: .75em; }
+.blog-rich-content pre { white-space: pre-wrap; }
+.blog-rich-content table { border-collapse: collapse; }
+.blog-rich-content td,
+.blog-rich-content th { border: 1px solid var(--border); padding: .3em; }

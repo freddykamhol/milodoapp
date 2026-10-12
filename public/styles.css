@@ -49,7 +49,6 @@
     --tracking-wide: 0.025em;
     --leading-snug: 1.375;
     --leading-relaxed: 1.625;
-    --radius-md: 0.375rem;
     --radius-lg: 0.5rem;
     --radius-xl: 0.75rem;
     --radius-2xl: 1rem;
@@ -397,6 +396,9 @@
   }
   .block {
     display: block;
+  }
+  .contents {
+    display: contents;
   }
   .flex {
     display: flex;
@@ -1531,6 +1533,10 @@
       outline-color: color-mix(in oklab,var(--danger) 40%,transparent);
     }
   }
+  .blur {
+    --tw-blur: blur(8px);
+    filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
+  }
   .filter {
     filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
   }
@@ -2079,62 +2085,6 @@
       grid-template-columns: 320px minmax(0,1fr);
     }
   }
-  .\[\&_code\]\:rounded-md {
-    & code {
-      border-radius: var(--radius-md);
-    }
-  }
-  .\[\&_code\]\:bg-\[var\(--surface\)\] {
-    & code {
-      background-color: var(--surface);
-    }
-  }
-  .\[\&_code\]\:px-2 {
-    & code {
-      padding-inline: calc(var(--spacing) * 2);
-    }
-  }
-  .\[\&_code\]\:py-0\.5 {
-    & code {
-      padding-block: calc(var(--spacing) * 0.5);
-    }
-  }
-  .\[\&_code\]\:font-mono {
-    & code {
-      font-family: "SFMono-Regular", "Menlo", monospace;
-    }
-  }
-  .\[\&_code\]\:text-\[13px\] {
-    & code {
-      font-size: 13px;
-    }
-  }
-  .\[\&_code\]\:shadow-\[inset_0_0_0_1px_var\(--border\)\] {
-    & code {
-      --tw-shadow: inset 0 0 0 1px var(--tw-shadow-color, var(--border));
-      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
-    }
-  }
-  .\[\&_div\]\:m-0 {
-    & div {
-      margin: calc(var(--spacing) * 0);
-    }
-  }
-  .\[\&_div\:not\(\:last-child\)\]\:mb-4 {
-    & div:not(:last-child) {
-      margin-bottom: calc(var(--spacing) * 4);
-    }
-  }
-  .\[\&_p\]\:m-0 {
-    & p {
-      margin: calc(var(--spacing) * 0);
-    }
-  }
-  .\[\&_p\:not\(\:last-child\)\]\:mb-4 {
-    & p:not(:last-child) {
-      margin-bottom: calc(var(--spacing) * 4);
-    }
-  }
   .\[\&\:empty\:before\]\:text-\[color\:var\(--muted\)\] {
     &:empty:before {
       color: var(--muted);
@@ -2370,50 +2320,57 @@ body {
     border-bottom-color: color-mix(in oklab, var(--accent) 65%, transparent);
   }
 }
-.rich-markdown-editor > p.rich-editor-paragraph,
-.rich-markdown-editor > p {
-  margin: 0 0 1rem;
+.blog-rich-content {
+  font-size: 14px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.blog-rich-content p,
+.blog-rich-content div {
+  margin: 0;
+}
+.blog-rich-content p:empty,
+.blog-rich-content div:empty {
   min-height: 1.5em;
 }
-.rich-markdown-editor > p:last-child,
-.rich-markdown-editor > h1:last-child,
-.rich-markdown-editor > h2:last-child,
-.rich-markdown-editor > h3:last-child {
-  margin-bottom: 0;
+.blog-rich-content h1 {
+  font-size: 2em;
 }
-.rich-markdown-editor > h1,
-.rich-markdown-editor > h2,
-.rich-markdown-editor > h3 {
-  margin: 1.25rem 0 0.75rem;
-  font-weight: 700;
+.blog-rich-content h2 {
+  font-size: 1.5em;
+}
+.blog-rich-content h3 {
+  font-size: 1.17em;
+}
+.blog-rich-content h1,
+.blog-rich-content h2,
+.blog-rich-content h3 {
+  font-weight: bold;
   line-height: 1.2;
 }
-.rich-markdown-editor > h1:first-child,
-.rich-markdown-editor > h2:first-child,
-.rich-markdown-editor > h3:first-child {
-  margin-top: 0;
+.blog-rich-content ul {
+  list-style-type: disc;
+  padding-left: 1.5em;
 }
-.rich-markdown-editor > h1,
-.rich-editor-heading-1 {
-  font-size: 1.75rem;
+.blog-rich-content ol {
+  list-style-type: decimal;
+  padding-left: 1.5em;
 }
-.rich-markdown-editor > h2,
-.rich-editor-heading-2 {
-  font-size: 1.4rem;
-}
-.rich-markdown-editor > h3,
-.rich-editor-heading-3 {
-  font-size: 1.15rem;
-}
-.rich-markdown-editor > ul,
-.rich-markdown-editor > ol {
-  margin: 0 0 1rem;
-  padding-left: 1.5rem;
-}
-.rich-markdown-editor > blockquote {
-  margin: 0 0 1rem;
+.blog-rich-content blockquote {
   border-left: 3px solid var(--accent);
-  padding-left: 0.75rem;
+  padding-left: .75em;
+}
+.blog-rich-content pre {
+  white-space: pre-wrap;
+}
+.blog-rich-content table {
+  border-collapse: collapse;
+}
+.blog-rich-content td,
+.blog-rich-content th {
+  border: 1px solid var(--border);
+  padding: .3em;
 }
 @property --tw-translate-x {
   syntax: "*";

@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
+import { sanitizeBlogHtml } from "@/lib/blog-rich-text";
+import { RichTextEditor } from "./rich-text-editor";
 
 type PostStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 
@@ -11,6 +13,7 @@ type Block = {
   id: string;
   type: BlockType;
   text?: string;
+  html?: string;
   url?: string; // legacy (API preview URL)
   storageKey?: string;
   alt?: string;
@@ -271,13 +274,6 @@ function htmlToMarkdown(root: HTMLElement) {
   return blocks.map((b) => b.trimEnd()).filter(Boolean).join("\n\n").replaceAll(/\n{3,}/g, "\n\n");
 }
 
-function clipboardHtmlToMarkdown(html: string, plainText: string) {
-  if (!html.trim()) return plainText.replaceAll("\r\n", "\n");
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const root = doc.body;
-  const markdown = htmlToMarkdown(root);
-  return markdown || plainText.replaceAll("\r\n", "\n");
-}
 
 function inlineNodeToMarkdown(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").replaceAll("\u00A0", " ");
@@ -308,75 +304,6 @@ function inlineNodeToMarkdown(node: Node): string {
   return inner;
 }
 
-function RichMarkdownEditor({
-  value,
-  placeholder,
-  editorRef,
-  onChangeMarkdown,
-  onFocus,
-  onKeyDown,
-  onPaste,
-  className,
-}: {
-  value: string;
-  placeholder: string;
-  editorRef?: React.RefCallback<HTMLDivElement>;
-  onChangeMarkdown: (next: string) => void;
-  onFocus?: React.FocusEventHandler<HTMLDivElement>;
-  onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
-  onPaste?: React.ClipboardEventHandler<HTMLDivElement>;
-  className?: string;
-}) {
-  const localRef = React.useRef<HTMLDivElement | null>(null);
-  const lastHtmlRef = React.useRef<string>("");
-
-  const html = React.useMemo(() => markdownToEditableHtml(value), [value]);
-
-  React.useLayoutEffect(() => {
-    const el = localRef.current;
-    if (!el) return;
-    if (document.activeElement === el) return;
-    if (lastHtmlRef.current === html) return;
-    el.innerHTML = html;
-    lastHtmlRef.current = html;
-  }, [html]);
-
-  return (
-    <div
-      ref={(node) => {
-        localRef.current = node;
-        editorRef?.(node);
-      }}
-      contentEditable
-      suppressContentEditableWarning
-      onFocus={onFocus}
-      onKeyDown={onKeyDown}
-      onPaste={onPaste}
-      onInput={() => {
-        const el = localRef.current;
-        if (!el) return;
-        const md = htmlToMarkdown(el);
-        onChangeMarkdown(md);
-        lastHtmlRef.current = el.innerHTML;
-      }}
-      onMouseDownCapture={(e) => e.stopPropagation()}
-      onTouchStartCapture={(e) => e.stopPropagation()}
-      className={cn(
-        "rich-markdown-editor",
-        "min-h-[84px] w-full rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-sm outline-none",
-        "focus:border-[color:color-mix(in_oklab,var(--accent)_45%,var(--border))] focus:ring-4 focus:ring-[color:color-mix(in_oklab,var(--accent)_16%,transparent)]",
-        "[&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-[color:var(--muted)]",
-        "whitespace-pre-wrap break-words",
-        "[&_code]:rounded-md [&_code]:bg-[var(--surface)] [&_code]:px-2 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[13px] [&_code]:shadow-[inset_0_0_0_1px_var(--border)]",
-        className,
-      )}
-      data-placeholder={placeholder}
-      spellCheck
-      autoCorrect="on"
-      autoCapitalize="sentences"
-    />
-  );
-}
 
 function slugify(value: string) {
   return String(value || "")
@@ -421,6 +348,10 @@ function blocksToMarkdown(blocks: Block[]) {
         if (key) lines.push(`![](/${key})`);
       }
       lines.push("<!-- /gallery -->", "");
+      continue;
+    }
+    if (typeof b.html === "string") {
+      lines.push(sanitizeBlogHtml(b.html), "");
       continue;
     }
     const raw = String(b.text || "");
@@ -575,6 +506,9 @@ function Preview({ blocks }: { blocks: Block[] }) {
 	          );
 	        }
 	        const raw = String(b.text || "");
+        if (typeof b.html === "string") {
+          return <div key={b.id} className="blog-rich-content" dangerouslySetInnerHTML={{ __html: sanitizeBlogHtml(b.html) }} />;
+        }
 	        const paragraphs = raw
 	          .split(/\n{2,}/g)
 	          .map((p) => p.trim())
@@ -884,7 +818,11 @@ export function BlogEditorClient(props: EditorMode) {
   }
 
   function updateBlock(id: string, patch: Partial<Block>) {
-    setContentBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+    setContentBlocks((prev) => prev.map((b) => (b.id === id ? {
+      ...b,
+      ...(patch.text !== undefined && patch.html === undefined ? { html: undefined } : {}),
+      ...patch,
+    } : b)));
   }
 
   function insertBlock(afterId: string | null, block: Block) {
@@ -907,7 +845,7 @@ export function BlogEditorClient(props: EditorMode) {
     if (!activeBlockId) return;
     const el = editorRefs.current.get(activeBlockId) ?? null;
     if (!el) return;
-    updateBlock(activeBlockId, { text: htmlToMarkdown(el) });
+    updateBlock(activeBlockId, { text: htmlToMarkdown(el), html: sanitizeBlogHtml(el.innerHTML) });
   }
 
   function applyInlineWrap(prefix: string, suffix: string = prefix) {
@@ -1002,7 +940,12 @@ export function BlogEditorClient(props: EditorMode) {
   }
 
   function setBlockType(id: string, type: BlockType) {
-    updateBlock(id, { type });
+    const el = editorRefs.current.get(id);
+    if (el && ["p", "h1", "h2", "h3", "quote"].includes(type)) {
+      el.focus();
+      document.execCommand("formatBlock", false, type === "quote" ? "blockquote" : type);
+      updateBlock(id, { type, text: htmlToMarkdown(el), html: sanitizeBlogHtml(el.innerHTML) });
+    } else updateBlock(id, { type });
     requestAnimationFrame(() => editorRefs.current.get(id)?.focus());
   }
 
@@ -1668,7 +1611,7 @@ export function BlogEditorClient(props: EditorMode) {
                             </button>
 	                          </div>
 	                        ) : null}
-		                        <RichMarkdownEditor
+		                        <RichTextEditor
 		                          editorRef={(node) => {
 		                            if (!node) {
 		                              editorRefs.current.delete(b.id);
@@ -1676,43 +1619,24 @@ export function BlogEditorClient(props: EditorMode) {
 		                            }
 		                            editorRefs.current.set(b.id, node);
 		                          }}
-		                          value={String(b.text || "")}
-		                          onChangeMarkdown={(next) => {
+		                          value={b.html ?? markdownToEditableHtml(
+                                (b.type === "h1" ? "# " : b.type === "h2" ? "## " : b.type === "h3" ? "### " : b.type === "quote" ? "> " : "") + String(b.text || ""),
+                              )}
+		                          onChange={(html) => {
+                                const el = editorRefs.current.get(b.id);
+                                const next = el ? htmlToMarkdown(el) : String(b.text || "");
 		                            if (next === "/") setSlashFor(b.id);
 		                            if (slashFor === b.id && String(next || "").trim() !== "/") setSlashFor(null);
-		                            updateBlock(b.id, { text: next });
+		                            updateBlock(b.id, { text: next, html });
 		                          }}
 		                          onFocus={() => {
 		                            setActiveBlockId(b.id);
 		                          }}
 		                          onKeyDown={(e) => {
 		                            if (e.key === "Escape") setSlashFor(null);
-		                            if (e.key === "Enter") {
-		                              e.preventDefault();
-		                              if (e.shiftKey) document.execCommand("insertLineBreak");
-		                              else document.execCommand("insertParagraph");
-		                              requestAnimationFrame(() => {
-		                                const el = editorRefs.current.get(b.id);
-		                                if (el) updateBlock(b.id, { text: htmlToMarkdown(el) });
-		                              });
-		                            }
 		                          }}
-                                  onPaste={(e) => {
-                                    const html = e.clipboardData.getData("text/html");
-                                    const plain = e.clipboardData.getData("text/plain");
-                                    e.preventDefault();
-                                    const markdown = html.trim()
-                                      ? clipboardHtmlToMarkdown(html, plain)
-                                      : plain.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n").join("\n\n");
-                                    document.execCommand("insertHTML", false, markdownToEditableHtml(markdown));
-                                    requestAnimationFrame(() => {
-                                      const el = editorRefs.current.get(b.id);
-                                      if (el) updateBlock(b.id, { text: htmlToMarkdown(el) });
-                                    });
-                                  }}
 		                          className={cn(
 		                            b.type === "quote" ? "border-l-4 border-l-[color:var(--accent)]" : "",
-		                            "[&_p]:m-0 [&_div]:m-0 [&_p:not(:last-child)]:mb-4 [&_div:not(:last-child)]:mb-4",
 		                          )}
 		                          placeholder={
 		                            b.type === "h2"

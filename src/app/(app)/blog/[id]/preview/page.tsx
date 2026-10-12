@@ -5,8 +5,9 @@ import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { ensureBlogSchema } from "@/lib/blog-schema";
 import { getViewer } from "@/lib/viewer";
+import { sanitizeBlogHtml } from "@/lib/blog-rich-text";
 
-type Block = { id: string; type: string; text?: string; url?: string; storageKey?: string; alt?: string; items?: Array<{ storageKey: string; alt?: string }> };
+type Block = { id: string; type: string; text?: string; html?: string; url?: string; storageKey?: string; alt?: string; items?: Array<{ storageKey: string; alt?: string }> };
 
 function isAdminOrVerwaltung(role: string) {
   return role === "ADMIN" || role === "VERWALTUNG";
@@ -159,6 +160,9 @@ function renderBlocks(blocks: Block[]) {
       );
     }
 
+    if (typeof b.html === "string") {
+      return <div key={b.id} className="blog-rich-content" dangerouslySetInnerHTML={{ __html: sanitizeBlogHtml(b.html) }} />;
+    }
     const text = String(b.text || "").trim();
     if (!text) return <div key={b.id} className="h-4" />;
 
