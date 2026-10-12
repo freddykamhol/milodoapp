@@ -208,9 +208,13 @@ function inlineMarkdownToHtml(text: string) {
 }
 
 function headingLevelFromGoogleStyle(el: HTMLElement) {
-  const style = el.getAttribute("style") || "";
+  const styledChild = el.querySelector<HTMLElement>("span[style], font[style]");
+  const style = el.getAttribute("style") || styledChild?.getAttribute("style") || "";
   const sizeMatch = style.match(/font-size\s*:\s*([\d.]+)\s*(pt|px)/i);
-  const weight = Number.parseInt((el.style.fontWeight || style.match(/font-weight\s*:\s*([\d.]+)/i)?.[1] || "0"), 10);
+  const weight = Number.parseInt(
+    el.style.fontWeight || styledChild?.style.fontWeight || style.match(/font-weight\s*:\s*([\d.]+)/i)?.[1] || "0",
+    10,
+  );
   if (!sizeMatch) return 0;
   const sizePx = Number(sizeMatch[1]) * (sizeMatch[2].toLowerCase() === "pt" ? 1.333 : 1);
   if (sizePx >= 28) return 1;
@@ -244,6 +248,13 @@ function htmlToMarkdown(root: HTMLElement) {
     }
     const isBlock = ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "section", "article"].includes(tag);
     if (isBlock) {
+      const hasNestedBlock = Array.from(el.children).some((child) =>
+        ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "section", "article"].includes(child.tagName.toLowerCase()),
+      );
+      if (hasNestedBlock) {
+        Array.from(el.childNodes).forEach(visit);
+        return;
+      }
       const inner = inlineNodeToMarkdown(el).trimEnd();
       if (inner) {
         const nativeHeading = tag.match(/^h[1-6]$/) ? Number(tag.slice(1)) : 0;
@@ -1689,9 +1700,10 @@ export function BlogEditorClient(props: EditorMode) {
                                   onPaste={(e) => {
                                     const html = e.clipboardData.getData("text/html");
                                     const plain = e.clipboardData.getData("text/plain");
-                                    if (!html.trim()) return;
                                     e.preventDefault();
-                                    const markdown = clipboardHtmlToMarkdown(html, plain);
+                                    const markdown = html.trim()
+                                      ? clipboardHtmlToMarkdown(html, plain)
+                                      : plain.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n").join("\n\n");
                                     document.execCommand("insertHTML", false, markdownToEditableHtml(markdown));
                                     requestAnimationFrame(() => {
                                       const el = editorRefs.current.get(b.id);
