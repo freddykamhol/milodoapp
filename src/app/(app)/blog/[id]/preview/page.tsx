@@ -198,12 +198,19 @@ function renderBlocks(blocks: Block[]) {
       return <ol key={b.id} className="mt-4 list-decimal space-y-1 pl-6 text-base leading-relaxed">{lines.map((line, idx) => <li key={idx}>{renderInline(line.replace(/^\d+[.)]\s+/, ""))}</li>)}</ol>;
     }
     return (
-      <p
-        key={b.id}
-        className="mt-4 text-base leading-relaxed text-[color:color-mix(in_oklab,var(--foreground)_92%,transparent)]"
-      >
-        {renderInline(text)}
-      </p>
+      <div key={b.id} className="space-y-4">
+        {text.split(/\n{2,}/g).map((paragraph, idx) => {
+          const heading = paragraph.trim().match(/^(#{1,3})\s+(.+)$/);
+          if (heading) {
+            const level = heading[1].length;
+            const className = level === 1 ? "text-3xl font-bold tracking-tight" : level === 2 ? "text-2xl font-semibold tracking-tight" : "text-xl font-semibold tracking-tight";
+            if (level === 1) return <h1 key={idx} className={className}>{renderInline(heading[2])}</h1>;
+            if (level === 2) return <h2 key={idx} className={className}>{renderInline(heading[2])}</h2>;
+            return <h3 key={idx} className={className}>{renderInline(heading[2])}</h3>;
+          }
+          return <p key={idx} className="text-base leading-relaxed text-[color:color-mix(in_oklab,var(--foreground)_92%,transparent)]">{renderInline(paragraph)}</p>;
+        })}
+      </div>
     );
   });
 }

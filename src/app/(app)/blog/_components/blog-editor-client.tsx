@@ -144,8 +144,11 @@ function markdownToEditableHtml(markdown: string) {
     }
     if (chunk === "---") return "<hr>";
     const heading = chunk.match(/^(#{1,3})\s+([\s\S]+)$/);
-    if (heading) return `<h${heading[1].length}>${inlineMarkdownToHtml(heading[2] || "")}</h${heading[1].length}>`;
-    return `<p>${inlineMarkdownToHtml(chunk)}</p>`;
+    if (heading) {
+      const level = heading[1].length;
+      return `<h${level} class="rich-editor-heading rich-editor-heading-${level}">${inlineMarkdownToHtml(heading[2] || "")}</h${level}>`;
+    }
+    return `<p class="rich-editor-paragraph">${inlineMarkdownToHtml(chunk)}</p>`;
   }).join("");
 }
 
@@ -204,6 +207,18 @@ function inlineMarkdownToHtml(text: string) {
   return out.replaceAll("\n", "<br>");
 }
 
+function headingLevelFromGoogleStyle(el: HTMLElement) {
+  const style = el.getAttribute("style") || "";
+  const sizeMatch = style.match(/font-size\s*:\s*([\d.]+)\s*(pt|px)/i);
+  const weight = Number.parseInt((el.style.fontWeight || style.match(/font-weight\s*:\s*([\d.]+)/i)?.[1] || "0"), 10);
+  if (!sizeMatch) return 0;
+  const sizePx = Number(sizeMatch[1]) * (sizeMatch[2].toLowerCase() === "pt" ? 1.333 : 1);
+  if (sizePx >= 28) return 1;
+  if (sizePx >= 22 && weight >= 600) return 2;
+  if (sizePx >= 18 && weight >= 600) return 3;
+  return 0;
+}
+
 function htmlToMarkdown(root: HTMLElement) {
   const blocks: string[] = [];
   const visit = (node: Node) => {
@@ -227,11 +242,14 @@ function htmlToMarkdown(root: HTMLElement) {
       blocks.push("---");
       return;
     }
-    const isBlock = ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre"].includes(tag);
+    const isBlock = ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "section", "article"].includes(tag);
     if (isBlock) {
       const inner = inlineNodeToMarkdown(el).trimEnd();
       if (inner) {
-        const prefix = tag.match(/^h[1-6]$/) ? `${"#".repeat(Number(tag.slice(1)))} ` : tag === "blockquote" ? "> " : "";
+        const nativeHeading = tag.match(/^h[1-6]$/) ? Number(tag.slice(1)) : 0;
+        const googleHeading = nativeHeading ? 0 : headingLevelFromGoogleStyle(el);
+        const headingLevel = nativeHeading || googleHeading;
+        const prefix = headingLevel ? `${"#".repeat(Math.min(3, headingLevel))} ` : tag === "blockquote" ? "> " : "";
         blocks.push(prefix + inner.replaceAll("\n", tag === "blockquote" ? "\n> " : "\n"));
       }
       return;
@@ -257,16 +275,15 @@ function inlineNodeToMarkdown(node: Node): string {
   const tag = el.tagName.toLowerCase();
   if (tag === "br") return "\n";
   const inner = Array.from(el.childNodes).map(inlineNodeToMarkdown).join("");
-  if (tag === "b" || (tag === "span" && Number.parseInt(el.style.fontWeight || "0", 10) >= 600)) return `**${inner}**`;
+  if (tag === "strong" && el.querySelector(":scope > em")) {
+    const em = el.querySelector(":scope > em");
+    const italicInner = em ? Array.from(em.childNodes).map(inlineNodeToMarkdown).join("") : inner;
+    return `***${italicInner}***`;
+  }
+  if (tag === "b" || tag === "strong" || (tag === "span" && Number.parseInt(el.style.fontWeight || "0", 10) >= 600)) return `**${inner}**`;
   if (tag === "i" || (tag === "span" && el.style.fontStyle === "italic")) return `*${inner}*`;
   if (tag === "u" || (tag === "span" && el.style.textDecoration.includes("underline"))) return `<u>${inner}</u>`;
   if (tag === "s" || tag === "strike" || tag === "del" || (tag === "span" && el.style.textDecoration.includes("line-through"))) return `~~${inner}~~`;
-  if (tag === "strong" && el.querySelector(":scope > em")) {
-    const em = el.querySelector(":scope > em");
-    const inner = em ? Array.from(em.childNodes).map(inlineNodeToMarkdown).join("") : Array.from(el.childNodes).map(inlineNodeToMarkdown).join("");
-    return `***${inner}***`;
-  }
-  if (tag === "strong") return `**${Array.from(el.childNodes).map(inlineNodeToMarkdown).join("")}**`;
   if (tag === "em") return `*${Array.from(el.childNodes).map(inlineNodeToMarkdown).join("")}*`;
   if (tag === "u") return `<u>${Array.from(el.childNodes).map(inlineNodeToMarkdown).join("")}</u>`;
   if (tag === "s" || tag === "strike" || tag === "del") return `~~${Array.from(el.childNodes).map(inlineNodeToMarkdown).join("")}~~`;
@@ -334,6 +351,7 @@ function RichMarkdownEditor({
       onMouseDownCapture={(e) => e.stopPropagation()}
       onTouchStartCapture={(e) => e.stopPropagation()}
       className={cn(
+        "rich-markdown-editor",
         "min-h-[84px] w-full rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-sm outline-none",
         "focus:border-[color:color-mix(in_oklab,var(--accent)_45%,var(--border))] focus:ring-4 focus:ring-[color:color-mix(in_oklab,var(--accent)_16%,transparent)]",
         "[&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-[color:var(--muted)]",
@@ -488,6 +506,16 @@ function Preview({ blocks }: { blocks: Block[] }) {
   const renderInline = (text: string) => renderInlineMarkdown(text);
   const renderText = (text: string, key: string) => {
     const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+    const heading = text.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      const Heading = `h${level}` as "h1" | "h2" | "h3";
+      return React.createElement(
+        Heading,
+        { key, className: cn("font-semibold tracking-tight", level === 1 ? "text-2xl" : level === 2 ? "text-xl" : "text-lg") },
+        renderInline(heading[2]),
+      );
+    }
     if (lines.length && lines.every((line) => /^[-*+]\s+/.test(line))) {
       return <ul key={key} className="list-disc space-y-1 pl-5">{lines.map((line, idx) => <li key={idx}>{renderInline(line.replace(/^[-*+]\s+/, ""))}</li>)}</ul>;
     }
