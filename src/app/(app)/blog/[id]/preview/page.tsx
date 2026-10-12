@@ -36,6 +36,8 @@ function renderInline(text: string) {
     const codeMatch = rest.match(/`([^`]+)`/);
     const boldItalicMatch = rest.match(/\*\*\*([\s\S]+?)\*\*\*/);
     const boldMatch = rest.match(/\*\*([\s\S]+?)\*\*/);
+    const strikeMatch = rest.match(/~~([\s\S]+?)~~/);
+    const underlineMatch = rest.match(/<u>([\s\S]+?)<\/u>/i);
     const italicMatch = rest.match(/\*([^*]+)\*/);
 
     const matches = [
@@ -45,9 +47,11 @@ function renderInline(text: string) {
         ? { kind: "bolditalic" as const, idx: boldItalicMatch.index ?? -1, m: boldItalicMatch }
         : null,
       boldMatch ? { kind: "bold" as const, idx: boldMatch.index ?? -1, m: boldMatch } : null,
+      strikeMatch ? { kind: "strike" as const, idx: strikeMatch.index ?? -1, m: strikeMatch } : null,
+      underlineMatch ? { kind: "underline" as const, idx: underlineMatch.index ?? -1, m: underlineMatch } : null,
       italicMatch ? { kind: "italic" as const, idx: italicMatch.index ?? -1, m: italicMatch } : null,
     ].filter(Boolean) as Array<{
-      kind: "link" | "code" | "bolditalic" | "bold" | "italic";
+      kind: "link" | "code" | "bolditalic" | "bold" | "strike" | "underline" | "italic";
       idx: number;
       m: RegExpMatchArray;
     }>;
@@ -96,6 +100,10 @@ function renderInline(text: string) {
           {next.m[1] ?? ""}
         </strong>,
       );
+    } else if (next.kind === "strike") {
+      parts.push(<del key={`s-${parts.length}`}>{next.m[1] ?? ""}</del>);
+    } else if (next.kind === "underline") {
+      parts.push(<u key={`u-${parts.length}`}>{next.m[1] ?? ""}</u>);
     } else if (next.kind === "italic") {
       parts.push(
         <em key={`i-${parts.length}`} className="italic">
@@ -154,6 +162,12 @@ function renderBlocks(blocks: Block[]) {
     const text = String(b.text || "").trim();
     if (!text) return <div key={b.id} className="h-4" />;
 
+    if (b.type === "h1")
+      return (
+        <h1 key={b.id} className="mt-8 text-3xl font-bold tracking-tight">
+          {renderInline(text)}
+        </h1>
+      );
     if (b.type === "h2")
       return (
         <h2 key={b.id} className="mt-10 text-2xl font-semibold tracking-tight">
@@ -176,6 +190,13 @@ function renderBlocks(blocks: Block[]) {
         </blockquote>
       );
 
+    const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+    if (lines.length && lines.every((line) => /^[-*+]\s+/.test(line))) {
+      return <ul key={b.id} className="mt-4 list-disc space-y-1 pl-6 text-base leading-relaxed">{lines.map((line, idx) => <li key={idx}>{renderInline(line.replace(/^[-*+]\s+/, ""))}</li>)}</ul>;
+    }
+    if (lines.length && lines.every((line) => /^\d+[.)]\s+/.test(line))) {
+      return <ol key={b.id} className="mt-4 list-decimal space-y-1 pl-6 text-base leading-relaxed">{lines.map((line, idx) => <li key={idx}>{renderInline(line.replace(/^\d+[.)]\s+/, ""))}</li>)}</ol>;
+    }
     return (
       <p
         key={b.id}

@@ -113,8 +113,11 @@ export async function POST(request: Request) {
     return `${yy}${String(next).padStart(4, "0")}`;
   }
 
-  const randomSecret = crypto.randomBytes(24).toString("base64url");
-  const passwordHash = hashPassword(randomSecret);
+  // Generate one credential pair and use it for both the database and the
+  // welcome email. Generating a second password after inserting the user
+  // makes the account unusable whenever the email is delayed or lost.
+  const passwordPlain = crypto.randomBytes(12).toString("base64url");
+  const passwordHash = hashPassword(passwordPlain);
 
   let createdUserId: number | null = null;
   let createdUsername = "";
@@ -229,10 +232,6 @@ export async function POST(request: Request) {
 
   let emailSent = false;
   try {
-    const passwordPlain = crypto.randomBytes(12).toString("base64url");
-    const passwordHash = hashPassword(passwordPlain);
-    await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, createdUserId));
-
     const res = await sendWelcomeEmail({ to: targetEmail, username: createdUsername, passwordPlain });
     emailSent = res.ok;
   } catch {

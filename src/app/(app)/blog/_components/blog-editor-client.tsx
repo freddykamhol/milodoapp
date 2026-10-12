@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 
 type PostStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 
-type BlockType = "p" | "h2" | "h3" | "quote" | "image" | "gallery" | "divider";
+type BlockType = "p" | "h1" | "h2" | "h3" | "quote" | "image" | "gallery" | "divider";
 type Block = {
   id: string;
   type: BlockType;
@@ -35,6 +35,8 @@ function renderInlineMarkdown(text: string) {
     const codeMatch = rest.match(/`([^`]+)`/);
     const boldItalicMatch = rest.match(/\*\*\*([\s\S]+?)\*\*\*/);
     const boldMatch = rest.match(/\*\*([\s\S]+?)\*\*/);
+    const strikeMatch = rest.match(/~~([\s\S]+?)~~/);
+    const underlineMatch = rest.match(/<u>([\s\S]+?)<\/u>/i);
     const italicMatch = rest.match(/\*([^*]+)\*/);
 
     const matches = [
@@ -42,9 +44,11 @@ function renderInlineMarkdown(text: string) {
       codeMatch ? { kind: "code" as const, idx: codeMatch.index ?? -1, m: codeMatch } : null,
       boldItalicMatch ? { kind: "bolditalic" as const, idx: boldItalicMatch.index ?? -1, m: boldItalicMatch } : null,
       boldMatch ? { kind: "bold" as const, idx: boldMatch.index ?? -1, m: boldMatch } : null,
+      strikeMatch ? { kind: "strike" as const, idx: strikeMatch.index ?? -1, m: strikeMatch } : null,
+      underlineMatch ? { kind: "underline" as const, idx: underlineMatch.index ?? -1, m: underlineMatch } : null,
       italicMatch ? { kind: "italic" as const, idx: italicMatch.index ?? -1, m: italicMatch } : null,
     ].filter(Boolean) as Array<{
-      kind: "link" | "code" | "bolditalic" | "bold" | "italic";
+      kind: "link" | "code" | "bolditalic" | "bold" | "strike" | "underline" | "italic";
       idx: number;
       m: RegExpMatchArray;
     }>;
@@ -95,6 +99,10 @@ function renderInlineMarkdown(text: string) {
           {inner}
         </strong>,
       );
+    } else if (next.kind === "strike") {
+      parts.push(<del key={`s-${parts.length}`}>{next.m[1] ?? ""}</del>);
+    } else if (next.kind === "underline") {
+      parts.push(<u key={`u-${parts.length}`}>{next.m[1] ?? ""}</u>);
     } else if (next.kind === "italic") {
       const inner = next.m[1] ?? "";
       parts.push(
@@ -122,13 +130,23 @@ function escapeHtml(text: string) {
 function markdownToEditableHtml(markdown: string) {
   const src = String(markdown || "");
   if (!src.trim()) return "";
-  const lines = src.split(/\n{2,}/g);
-  const htmlParagraphs = lines.map((p) => {
-    const paragraph = String(p || "");
-    if (!paragraph.trim()) return "<p><br></p>";
-    return `<p>${inlineMarkdownToHtml(paragraph)}</p>`;
-  });
-  return htmlParagraphs.join("");
+  const chunks = src.split(/\n{2,}/g).map((chunk) => chunk.trim()).filter(Boolean);
+  return chunks.map((chunk) => {
+    const lines = chunk.split("\n");
+    if (lines.every((line) => /^[-*+]\s+/.test(line.trim()))) {
+      return `<ul>${lines.map((line) => `<li>${inlineMarkdownToHtml(line.trim().replace(/^[-*+]\s+/, ""))}</li>`).join("")}</ul>`;
+    }
+    if (lines.every((line) => /^\d+[.)]\s+/.test(line.trim()))) {
+      return `<ol>${lines.map((line) => `<li>${inlineMarkdownToHtml(line.trim().replace(/^\d+[.)]\s+/, ""))}</li>`).join("")}</ol>`;
+    }
+    if (lines.every((line) => /^>\s?/.test(line.trim()))) {
+      return `<blockquote>${inlineMarkdownToHtml(lines.map((line) => line.replace(/^>\s?/, "")).join("\n"))}</blockquote>`;
+    }
+    if (chunk === "---") return "<hr>";
+    const heading = chunk.match(/^(#{1,3})\s+([\s\S]+)$/);
+    if (heading) return `<h${heading[1].length}>${inlineMarkdownToHtml(heading[2] || "")}</h${heading[1].length}>`;
+    return `<p>${inlineMarkdownToHtml(chunk)}</p>`;
+  }).join("");
 }
 
 function inlineMarkdownToHtml(text: string) {
@@ -139,6 +157,8 @@ function inlineMarkdownToHtml(text: string) {
     const codeMatch = rest.match(/`([^`]+)`/);
     const boldItalicMatch = rest.match(/\*\*\*([\s\S]+?)\*\*\*/);
     const boldMatch2 = rest.match(/\*\*([\s\S]+?)\*\*/);
+    const strikeMatch = rest.match(/~~([\s\S]+?)~~/);
+    const underlineMatch = rest.match(/<u>([\s\S]+?)<\/u>/i);
     const italicMatch = rest.match(/\*([^*]+)\*/);
 
     const matches = [
@@ -146,8 +166,10 @@ function inlineMarkdownToHtml(text: string) {
       codeMatch ? { kind: "code" as const, idx: codeMatch.index ?? -1, m: codeMatch } : null,
       boldItalicMatch ? { kind: "bolditalic" as const, idx: boldItalicMatch.index ?? -1, m: boldItalicMatch } : null,
       boldMatch2 ? { kind: "bold" as const, idx: boldMatch2.index ?? -1, m: boldMatch2 } : null,
+      strikeMatch ? { kind: "strike" as const, idx: strikeMatch.index ?? -1, m: strikeMatch } : null,
+      underlineMatch ? { kind: "underline" as const, idx: underlineMatch.index ?? -1, m: underlineMatch } : null,
       italicMatch ? { kind: "italic" as const, idx: italicMatch.index ?? -1, m: italicMatch } : null,
-    ].filter(Boolean) as Array<{ kind: "link" | "code" | "bolditalic" | "bold" | "italic"; idx: number; m: RegExpMatchArray }>;
+    ].filter(Boolean) as Array<{ kind: "link" | "code" | "bolditalic" | "bold" | "strike" | "underline" | "italic"; idx: number; m: RegExpMatchArray }>;
 
     const next = matches.sort((a, b) => a.idx - b.idx).at(0) ?? null;
     if (!next || next.idx < 0) {
@@ -169,6 +191,10 @@ function inlineMarkdownToHtml(text: string) {
     } else if (next.kind === "bold") {
       const inner = escapeHtml(next.m[1] ?? "");
       out += `<strong>${inner}</strong>`;
+    } else if (next.kind === "strike") {
+      out += `<del>${escapeHtml(next.m[1] ?? "")}</del>`;
+    } else if (next.kind === "underline") {
+      out += `<u>${escapeHtml(next.m[1] ?? "")}</u>`;
     } else if (next.kind === "italic") {
       const inner = escapeHtml(next.m[1] ?? "");
       out += `<em>${inner}</em>`;
@@ -180,23 +206,48 @@ function inlineMarkdownToHtml(text: string) {
 
 function htmlToMarkdown(root: HTMLElement) {
   const blocks: string[] = [];
-  const children = Array.from(root.childNodes);
-  const blockNodes = children.length ? children : [root];
-
-  for (const node of blockNodes) {
-    if (node.nodeType === Node.ELEMENT_NODE) {
-      const el = node as HTMLElement;
-      if (el.tagName === "P" || el.tagName === "DIV") {
-        const md = inlineNodeToMarkdown(el).trimEnd();
-        blocks.push(md);
-        continue;
-      }
+  const visit = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = (node.textContent ?? "").trim();
+      if (text) blocks.push(text);
+      return;
     }
-    const md = inlineNodeToMarkdown(node).trimEnd();
-    blocks.push(md);
-  }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+    if (tag === "ul" || tag === "ol") {
+      const ordered = tag === "ol";
+      const items = Array.from(el.children)
+        .filter((child) => child.tagName.toLowerCase() === "li")
+        .map((child) => `${ordered ? "1." : "-"} ${inlineNodeToMarkdown(child).trim()}`);
+      if (items.length) blocks.push(items.join("\n"));
+      return;
+    }
+    if (tag === "hr") {
+      blocks.push("---");
+      return;
+    }
+    const isBlock = ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre"].includes(tag);
+    if (isBlock) {
+      const inner = inlineNodeToMarkdown(el).trimEnd();
+      if (inner) {
+        const prefix = tag.match(/^h[1-6]$/) ? `${"#".repeat(Number(tag.slice(1)))} ` : tag === "blockquote" ? "> " : "";
+        blocks.push(prefix + inner.replaceAll("\n", tag === "blockquote" ? "\n> " : "\n"));
+      }
+      return;
+    }
+    Array.from(el.childNodes).forEach(visit);
+  };
+  Array.from(root.childNodes).forEach(visit);
+  return blocks.map((b) => b.trimEnd()).filter(Boolean).join("\n\n").replaceAll(/\n{3,}/g, "\n\n");
+}
 
-  return blocks.map((b) => b.trimEnd()).join("\n\n").replaceAll(/\n{3,}/g, "\n\n");
+function clipboardHtmlToMarkdown(html: string, plainText: string) {
+  if (!html.trim()) return plainText.replaceAll("\r\n", "\n");
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const root = doc.body;
+  const markdown = htmlToMarkdown(root);
+  return markdown || plainText.replaceAll("\r\n", "\n");
 }
 
 function inlineNodeToMarkdown(node: Node): string {
@@ -205,6 +256,11 @@ function inlineNodeToMarkdown(node: Node): string {
   const el = node as HTMLElement;
   const tag = el.tagName.toLowerCase();
   if (tag === "br") return "\n";
+  const inner = Array.from(el.childNodes).map(inlineNodeToMarkdown).join("");
+  if (tag === "b" || (tag === "span" && Number.parseInt(el.style.fontWeight || "0", 10) >= 600)) return `**${inner}**`;
+  if (tag === "i" || (tag === "span" && el.style.fontStyle === "italic")) return `*${inner}*`;
+  if (tag === "u" || (tag === "span" && el.style.textDecoration.includes("underline"))) return `<u>${inner}</u>`;
+  if (tag === "s" || tag === "strike" || tag === "del" || (tag === "span" && el.style.textDecoration.includes("line-through"))) return `~~${inner}~~`;
   if (tag === "strong" && el.querySelector(":scope > em")) {
     const em = el.querySelector(":scope > em");
     const inner = em ? Array.from(em.childNodes).map(inlineNodeToMarkdown).join("") : Array.from(el.childNodes).map(inlineNodeToMarkdown).join("");
@@ -212,13 +268,15 @@ function inlineNodeToMarkdown(node: Node): string {
   }
   if (tag === "strong") return `**${Array.from(el.childNodes).map(inlineNodeToMarkdown).join("")}**`;
   if (tag === "em") return `*${Array.from(el.childNodes).map(inlineNodeToMarkdown).join("")}*`;
+  if (tag === "u") return `<u>${Array.from(el.childNodes).map(inlineNodeToMarkdown).join("")}</u>`;
+  if (tag === "s" || tag === "strike" || tag === "del") return `~~${Array.from(el.childNodes).map(inlineNodeToMarkdown).join("")}~~`;
+  if (tag === "pre") return `\`\`\`\n${el.textContent || ""}\n\`\`\``;
   if (tag === "code") return `\`${Array.from(el.childNodes).map(inlineNodeToMarkdown).join("").replaceAll("\n", " ")}\``;
   if (tag === "a") {
     const href = el.getAttribute("href") || "";
     const label = Array.from(el.childNodes).map(inlineNodeToMarkdown).join("");
     return `[${label}](${href})`;
   }
-  const inner = Array.from(el.childNodes).map(inlineNodeToMarkdown).join("");
   return inner;
 }
 
@@ -229,6 +287,7 @@ function RichMarkdownEditor({
   onChangeMarkdown,
   onFocus,
   onKeyDown,
+  onPaste,
   className,
 }: {
   value: string;
@@ -237,6 +296,7 @@ function RichMarkdownEditor({
   onChangeMarkdown: (next: string) => void;
   onFocus?: React.FocusEventHandler<HTMLDivElement>;
   onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
+  onPaste?: React.ClipboardEventHandler<HTMLDivElement>;
   className?: string;
 }) {
   const localRef = React.useRef<HTMLDivElement | null>(null);
@@ -263,6 +323,7 @@ function RichMarkdownEditor({
       suppressContentEditableWarning
       onFocus={onFocus}
       onKeyDown={onKeyDown}
+      onPaste={onPaste}
       onInput={() => {
         const el = localRef.current;
         if (!el) return;
@@ -345,7 +406,8 @@ function blocksToMarkdown(blocks: Block[]) {
     }
 
     for (const p of paragraphs) {
-      if (b.type === "h2") lines.push(`## ${p}`, "");
+      if (b.type === "h1") lines.push(`# ${p}`, "");
+      else if (b.type === "h2") lines.push(`## ${p}`, "");
       else if (b.type === "h3") lines.push(`### ${p}`, "");
       else if (b.type === "quote") lines.push(`> ${p.replaceAll("\n", "\n> ")}`, "");
       else lines.push(p, "");
@@ -424,6 +486,16 @@ function Textarea({
 function Preview({ blocks }: { blocks: Block[] }) {
   const urlFromKey = (key: string) => `/api/blog/assets/raw?key=${encodeURIComponent(key)}`;
   const renderInline = (text: string) => renderInlineMarkdown(text);
+  const renderText = (text: string, key: string) => {
+    const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+    if (lines.length && lines.every((line) => /^[-*+]\s+/.test(line))) {
+      return <ul key={key} className="list-disc space-y-1 pl-5">{lines.map((line, idx) => <li key={idx}>{renderInline(line.replace(/^[-*+]\s+/, ""))}</li>)}</ul>;
+    }
+    if (lines.length && lines.every((line) => /^\d+[.)]\s+/.test(line))) {
+      return <ol key={key} className="list-decimal space-y-1 pl-5">{lines.map((line, idx) => <li key={idx}>{renderInline(line.replace(/^\d+[.)]\s+/, ""))}</li>)}</ol>;
+    }
+    return <p key={key} className="leading-relaxed">{renderInline(text)}</p>;
+  };
 
   return (
     <div className="prose max-w-none text-sm">
@@ -470,7 +542,10 @@ function Preview({ blocks }: { blocks: Block[] }) {
 	          .filter(Boolean);
 	        if (!paragraphs.length) return <div key={b.id} className="h-3" />;
 
-	        if (b.type === "h2") {
+        if (b.type === "h1") {
+          return <h1 key={b.id} className="text-2xl font-bold">{renderInline(raw)}</h1>;
+        }
+        if (b.type === "h2") {
 	          return (
 	            <div key={b.id} className="space-y-2">
 	              {paragraphs.map((p, idx) => (
@@ -503,15 +578,7 @@ function Preview({ blocks }: { blocks: Block[] }) {
 	            </div>
 	          );
 	        }
-	        return (
-	          <div key={b.id} className="space-y-3">
-	            {paragraphs.map((p, idx) => (
-	              <p key={idx} className="leading-relaxed">
-	                {renderInline(p)}
-	              </p>
-	            ))}
-	          </div>
-	        );
+        return <div key={b.id} className="space-y-3">{paragraphs.map((p, idx) => renderText(p, `${b.id}-${idx}`))}</div>;
 	      })}
 	    </div>
 	  );
@@ -886,6 +953,20 @@ export function BlogEditorClient(props: EditorMode) {
     void suffix;
   }
 
+  function applyEditorCommand(command: string, value?: string) {
+    if (!activeBlockId) return;
+    const el = editorRefs.current.get(activeBlockId);
+    if (!el) return;
+    el.focus();
+    document.execCommand(command, false, value);
+    syncActiveEditorToMarkdown();
+  }
+
+  function setBlockType(id: string, type: BlockType) {
+    updateBlock(id, { type });
+    requestAnimationFrame(() => editorRefs.current.get(id)?.focus());
+  }
+
   function moveBlock(id: string, dir: -1 | 1) {
     setContentBlocks((prev) => {
       const idx = prev.findIndex((b) => b.id === id);
@@ -914,6 +995,7 @@ export function BlogEditorClient(props: EditorMode) {
 
   const slashOptions: Array<{ key: string; label: string; apply: (id: string) => void }> = [
     { key: "p", label: "Text", apply: (id) => updateBlock(id, { type: "p", text: "" }) },
+    { key: "h1", label: "Titel 1", apply: (id) => updateBlock(id, { type: "h1" }) },
     { key: "h2", label: "Überschrift", apply: (id) => updateBlock(id, { type: "h2" }) },
     { key: "h3", label: "Unterüberschrift", apply: (id) => updateBlock(id, { type: "h3" }) },
     { key: "quote", label: "Zitat", apply: (id) => updateBlock(id, { type: "quote" }) },
@@ -1218,7 +1300,9 @@ export function BlogEditorClient(props: EditorMode) {
               {contentBlocks.map((b) => {
                 const isActive = activeBlockId === b.id;
                 const headerLabel =
-                  b.type === "h2"
+                  b.type === "h1"
+                    ? "Titel 1"
+                    : b.type === "h2"
                     ? "Überschrift"
                     : b.type === "h3"
                       ? "Unterüberschrift"
@@ -1452,8 +1536,21 @@ export function BlogEditorClient(props: EditorMode) {
                       </div>
 	                    ) : (
 	                      <div className="relative">
-	                        {isActive && (b.type === "p" || b.type === "h2" || b.type === "h3" || b.type === "quote") ? (
+                        {isActive && (b.type === "p" || b.type === "h1" || b.type === "h2" || b.type === "h3" || b.type === "quote") ? (
 	                          <div className="mb-2 flex flex-wrap gap-2">
+                            <select
+                              value={b.type}
+                              onChange={(e) => setBlockType(b.id, e.target.value as BlockType)}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs font-semibold outline-none"
+                              aria-label="Absatzformat"
+                            >
+                              <option value="p">Text</option>
+                              <option value="h1">Titel 1</option>
+                              <option value="h2">Überschrift</option>
+                              <option value="h3">Unterüberschrift</option>
+                              <option value="quote">Zitat</option>
+                            </select>
 	                            <button
 	                              type="button"
 	                              onMouseDown={(e) => e.preventDefault()}
@@ -1470,6 +1567,38 @@ export function BlogEditorClient(props: EditorMode) {
 	                            >
 	                              Kursiv
 	                            </button>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => applyEditorCommand("underline")}
+                              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--surface-2)]"
+                            >
+                              Unterstrichen
+                            </button>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => applyEditorCommand("strikeThrough")}
+                              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--surface-2)]"
+                            >
+                              Durchgestrichen
+                            </button>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => applyEditorCommand("insertUnorderedList")}
+                              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--surface-2)]"
+                            >
+                              Aufzählung
+                            </button>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => applyEditorCommand("insertOrderedList")}
+                              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--surface-2)]"
+                            >
+                              Nummerierung
+                            </button>
 	                            <button
 	                              type="button"
 	                              onMouseDown={(e) => e.preventDefault()}
@@ -1490,6 +1619,14 @@ export function BlogEditorClient(props: EditorMode) {
 	                            >
 	                              Link
 	                            </button>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => applyEditorCommand("removeFormat")}
+                              className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--surface-2)]"
+                            >
+                              Formatierung löschen
+                            </button>
 	                          </div>
 	                        ) : null}
 		                        <RichMarkdownEditor
@@ -1521,6 +1658,18 @@ export function BlogEditorClient(props: EditorMode) {
 		                              });
 		                            }
 		                          }}
+                                  onPaste={(e) => {
+                                    const html = e.clipboardData.getData("text/html");
+                                    const plain = e.clipboardData.getData("text/plain");
+                                    if (!html.trim()) return;
+                                    e.preventDefault();
+                                    const markdown = clipboardHtmlToMarkdown(html, plain);
+                                    document.execCommand("insertHTML", false, markdownToEditableHtml(markdown));
+                                    requestAnimationFrame(() => {
+                                      const el = editorRefs.current.get(b.id);
+                                      if (el) updateBlock(b.id, { text: htmlToMarkdown(el) });
+                                    });
+                                  }}
 		                          className={cn(
 		                            b.type === "quote" ? "border-l-4 border-l-[color:var(--accent)]" : "",
 		                            "[&_p]:m-0 [&_div]:m-0 [&_p:not(:last-child)]:mb-4 [&_div:not(:last-child)]:mb-4",
