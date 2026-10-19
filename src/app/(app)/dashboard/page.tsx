@@ -1,3 +1,4 @@
+import { dateFormatter } from "@/lib/date-format";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -17,7 +18,7 @@ type UserRow = typeof users.$inferSelect;
 type AppointmentRow = typeof appointments.$inferSelect;
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", {
+  return dateFormatter({
     weekday: "short",
     day: "2-digit",
     month: "2-digit",
@@ -26,7 +27,7 @@ function formatDate(date: Date) {
 }
 
 function formatTime(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", {
+  return dateFormatter({
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
@@ -48,7 +49,7 @@ async function getCurrentUser(): Promise<UserRow | null> {
 }
 
 function eligibleWhere(user: UserRow) {
-  const cutoff = new Date(Date.now() - 15 * 60 * 1000);
+  const cutoff = new Date(); cutoff.setMinutes(cutoff.getMinutes() - 15);
   const targeted = eq(appointments.targetUserId, user.id);
   const openAndFuture = and(eq(appointments.state, "OPEN"), gte(appointments.startAt, cutoff));
 
@@ -100,7 +101,7 @@ function eligibleWhere(user: UserRow) {
 }
 
 async function getNextConfirmedAppointment(userId: number) {
-  const cutoff = new Date(Date.now() - 15 * 60 * 1000);
+  const cutoff = new Date(); cutoff.setMinutes(cutoff.getMinutes() - 15);
   const appointmentCols = getTableColumns(appointments);
 
   const row = await db
@@ -190,7 +191,7 @@ async function DashboardPageInner() {
       );
     }
 
-    const cutoff = new Date(Date.now() - 15 * 60 * 1000);
+    const cutoff = new Date(); cutoff.setMinutes(cutoff.getMinutes() - 15);
     const items = await db
       .select()
       .from(appointments)
@@ -353,7 +354,7 @@ async function DashboardPageInner() {
         }
       >
         {nextOpen.length ? (
-          <div className="overflow-x-auto rounded-2xl border border-[var(--border)]">
+          <div className="responsive-records overflow-x-auto rounded-2xl border border-[var(--border)]">
             <div className="min-w-[720px] grid grid-cols-[140px_1fr_160px_44px] gap-3 bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[color:var(--muted)]">
               <div>Datum/Zeit</div>
               <div>Titel</div>

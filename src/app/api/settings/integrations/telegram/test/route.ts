@@ -1,3 +1,4 @@
+import { dateFormatter } from "@/lib/date-format";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { chatId?: number };
   const chatId = typeof body.chatId === "number" ? body.chatId : null;
 
-  const text = `✅ Milodo Testnachricht (${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date())})`;
+  const text = `✅ Milodo Testnachricht (${dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(new Date())})`;
 
   const result = await sendTelegramMessage({ chatId, text });
   if (!result.ok) return NextResponse.json({ ok: false, error: result.error, message: result.message }, { status: 400 });

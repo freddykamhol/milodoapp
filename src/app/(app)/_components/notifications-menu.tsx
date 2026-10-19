@@ -1,6 +1,9 @@
 "use client";
 
+import { dateFormatter } from "@/lib/date-format";
 import * as React from "react";
+import { createPortal } from "react-dom";
+import { notify } from "@/app/_components/feedback";
 
 import { IconBell } from "./icons";
 import { Badge } from "./ui";
@@ -15,9 +18,14 @@ type NotificationItem = {
   read: boolean;
 };
 
+type NotificationPanelData = { unreadCount: number; notifications: NotificationItem[] };
+let notificationPanelCache: { at: number; data: NotificationPanelData } | null = null;
+let notificationPanelRequest: Promise<NotificationPanelData | null> | null = null;
+const NOTIFICATION_CACHE_MS = 30_000;
+
 function formatTime(input: NotificationItem["createdAt"]) {
   const d = new Date(input);
-  return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
+  return dateFormatter({ day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(d);
 }
 
 export function NotificationsMenu() {
@@ -28,16 +36,52 @@ export function NotificationsMenu() {
   const [unreadCount, setUnreadCount] = React.useState(0);
 
   const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = React.useState({ top: 0, left: 0, width: 420, maxHeight: 500 });
 
-  const load = React.useCallback(async () => {
-    const res = await fetch("/api/notifications?view=panel", { cache: "no-store" }).catch(() => null);
-    if (!res?.ok) return;
-    const json = (await res.json().catch(() => null)) as
-      | { ok: true; unreadCount: number; notifications: NotificationItem[] }
-      | { ok: false };
-    if (!json || !("ok" in json) || !json.ok) return;
-    setItems(json.notifications ?? []);
-    setUnreadCount(json.unreadCount ?? 0);
+  React.useLayoutEffect(() => {
+    if (!renderPanel) return;
+    function place() {
+      const rect = rootRef.current?.getBoundingClientRect(); if (!rect) return;
+      const viewport = window.visualViewport;
+      const width = Math.min(420, (viewport?.width ?? window.innerWidth) - 24);
+      const height = viewport?.height ?? window.innerHeight;
+      const top = Math.min(rect.bottom + 8, Math.max(12, height - 220));
+      setPosition({ top, left: Math.max(12, Math.min(rect.right - width, (viewport?.width ?? window.innerWidth) - width - 12)), width, maxHeight: height - top - 12 });
+    }
+    place(); window.addEventListener("resize", place); window.addEventListener("scroll", place, true); window.visualViewport?.addEventListener("resize", place);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); window.visualViewport?.removeEventListener("resize", place); };
+  }, [renderPanel]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); rootRef.current?.querySelector("button")?.focus(); } };
+    window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close);
+  }, [open]);
+
+  const load = React.useCallback(async (force = false) => {
+    if (!force && notificationPanelCache && Date.now() - notificationPanelCache.at < NOTIFICATION_CACHE_MS) {
+      setItems(notificationPanelCache.data.notifications);
+      setUnreadCount(notificationPanelCache.data.unreadCount);
+      return;
+    }
+    if (!notificationPanelRequest) {
+      notificationPanelRequest = fetch("/api/notifications?view=panel", { cache: "no-store" })
+        .then(async (res) => {
+          if (!res.ok) return null;
+          const json = await res.json() as { ok: boolean; unreadCount?: number; notifications?: NotificationItem[] };
+          if (!json.ok) return null;
+          const data = { unreadCount: json.unreadCount ?? 0, notifications: json.notifications ?? [] };
+          notificationPanelCache = { at: Date.now(), data };
+          return data;
+        })
+        .catch(() => null)
+        .finally(() => { notificationPanelRequest = null; });
+    }
+    const data = await notificationPanelRequest;
+    if (!data) return;
+    setItems(data.notifications);
+    setUnreadCount(data.unreadCount);
   }, []);
 
   React.useEffect(() => {
@@ -46,9 +90,9 @@ export function NotificationsMenu() {
     let t: number | null = null;
     const loop = () => {
       if (document.visibilityState === "visible") void load();
-      t = window.setTimeout(loop, 15_000);
+      t = window.setTimeout(loop, 60_000);
     };
-    t = window.setTimeout(loop, 15_000);
+    t = window.setTimeout(loop, 60_000);
 
     return () => {
       window.clearTimeout(initial);
@@ -58,13 +102,13 @@ export function NotificationsMenu() {
 
   React.useEffect(() => {
     if (!open) return;
-    const t = window.setTimeout(() => void load(), 0);
+    const t = window.setTimeout(() => void load(true), 0);
     return () => window.clearTimeout(t);
   }, [open, load]);
 
   React.useEffect(() => {
     function onRefresh() {
-      void load();
+      void load(true);
     }
     window.addEventListener("milodo:notifications:refresh", onRefresh as EventListener);
     return () => window.removeEventListener("milodo:notifications:refresh", onRefresh as EventListener);
@@ -75,7 +119,7 @@ export function NotificationsMenu() {
     function onDown(e: MouseEvent | TouchEvent) {
       const el = rootRef.current;
       if (!el) return;
-      if (e.target instanceof Node && !el.contains(e.target)) setOpen(false);
+      if (e.target instanceof Node && !el.contains(e.target) && !panelRef.current?.contains(e.target)) setOpen(false);
     }
     window.addEventListener("mousedown", onDown);
     window.addEventListener("touchstart", onDown, { passive: true });
@@ -101,12 +145,15 @@ export function NotificationsMenu() {
     if (!ids || (Array.isArray(ids) && ids.length === 0)) return;
     setBusy(true);
     try {
-      await fetch("/api/notifications", {
+      const response = await fetch("/api/notifications", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(ids === "all" ? { all: true } : { ids }),
       });
-      await load();
+      if (!response.ok) throw new Error("Benachrichtigungen konnten nicht aktualisiert werden.");
+      await load(true);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Aktualisieren fehlgeschlagen.");
     } finally {
       setBusy(false);
     }
@@ -130,18 +177,20 @@ export function NotificationsMenu() {
         ) : null}
       </button>
 
-      {renderPanel ? (
+      {renderPanel ? createPortal(
         <div
+          ref={panelRef}
+          style={position}
           role="dialog"
           aria-label="Benachrichtigungen"
           data-state={open ? "open" : "closed"}
-          className="notifications-popover absolute right-0 z-50 mt-2 w-[min(420px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_22px_60px_rgba(11,18,32,0.18)]"
+          className="notifications-popover fixed z-[90] flex flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow)]"
         >
           <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold tracking-tight">Benachrichtigungen</p>
               <p className="mt-0.5 text-[11px] font-semibold text-[color:var(--muted)]">
-                {unreadCount ? `${unreadCount} ungelesen` : "Keine neue benachrichtigung 🎉"}
+                {unreadCount ? `${unreadCount} ungelesen` : "Keine neuen Benachrichtigungen"}
               </p>
             </div>
             <button
@@ -154,11 +203,11 @@ export function NotificationsMenu() {
             </button>
           </div>
 
-          <ul className="max-h-[70dvh] divide-y divide-[var(--border)] overflow-auto">
+          <ul className="min-h-0 flex-1 divide-y divide-[var(--border)] overflow-auto overscroll-contain">
             {unreadCount === 0 ? (
               <li className="px-4 py-5">
                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-4">
-                  <p className="text-sm font-semibold">Keine neue benachrichtigung 🎉</p>
+                  <p className="text-sm font-semibold">Keine neuen Benachrichtigungen</p>
                   <p className="mt-1 text-xs text-[color:var(--muted)]">Hier erscheinen neue Hinweise für dich.</p>
                 </div>
               </li>
@@ -168,13 +217,13 @@ export function NotificationsMenu() {
                   key={n.id}
                   className="px-4 py-3 bg-[color:color-mix(in_oklab,var(--accent)_5%,transparent)]"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         {!n.read ? <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-[color:var(--accent)]" /> : null}
-                        <p className="truncate text-sm font-semibold">{n.title}</p>
+                        <p className="break-words text-sm font-semibold">{n.title}</p>
                       </div>
-                      {n.body ? <p className="mt-1 text-xs text-[color:var(--muted)]">{n.body}</p> : null}
+                      {n.body ? <p className="mt-1 break-words text-xs text-[color:var(--muted)]">{n.body}</p> : null}
                       <p className="mt-2 text-[11px] font-semibold text-[color:var(--muted)]">{formatTime(n.createdAt)}</p>
                     </div>
 
@@ -227,7 +276,7 @@ export function NotificationsMenu() {
               Alle Benachrichtigungen
             </button>
           </div>
-        </div>
+        </div>, document.body
       ) : null}
     </div>
   );

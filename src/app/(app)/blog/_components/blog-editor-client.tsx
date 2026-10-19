@@ -1,5 +1,9 @@
 "use client";
 
+import type {InitialBlogPost} from "@/lib/blog-editor-data";
+import {FilePreviews,StagedUpload} from "@/app/_components/file-upload";
+import { requestText } from "@/app/_components/feedback";
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
@@ -557,11 +561,13 @@ function Preview({ blocks }: { blocks: Block[] }) {
 	  );
 	}
 
-type EditorMode = { mode: "new" } | { mode: "edit"; postId: number };
+type EditorMode = ({ mode: "new" } | { mode: "edit"; postId: number }) & {initialPost?:InitialBlogPost};
 
 export function BlogEditorClient(props: EditorMode) {
   const router = useRouter();
+  const initial=props.initialPost;
   const [busy, setBusy] = React.useState(false);
+  const [inlineFiles,setInlineFiles]=React.useState<File[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const urlFromKey = React.useCallback(
     (key: string) => `/api/blog/assets/raw?key=${encodeURIComponent(key)}`,
@@ -569,14 +575,14 @@ export function BlogEditorClient(props: EditorMode) {
   );
 
   const [postId, setPostId] = React.useState<number | null>(props.mode === "edit" ? props.postId : null);
-  const [status, setStatus] = React.useState<PostStatus>("DRAFT");
-  const [title, setTitle] = React.useState("");
-  const [category, setCategory] = React.useState("allgemein");
-  const [slug, setSlug] = React.useState("");
-  const [slugAuto, setSlugAuto] = React.useState(true);
-  const [excerpt, setExcerpt] = React.useState("");
-  const [contentBlocks, setContentBlocks] = React.useState<Block[]>([{ id: newId(), type: "p", text: "" }]);
-  const [titleImageUrl, setTitleImageUrl] = React.useState<string>("");
+  const [status, setStatus] = React.useState<PostStatus>(initial?.status??"DRAFT");
+  const [title, setTitle] = React.useState(initial?.title??"");
+  const [category, setCategory] = React.useState(initial?.category??"allgemein");
+  const [slug, setSlug] = React.useState(initial?.slug??"");
+  const [slugAuto, setSlugAuto] = React.useState(!initial||initial.status!=="PUBLISHED"&&(!initial.slug.trim()||initial.slug===slugify(initial.title)));
+  const [excerpt, setExcerpt] = React.useState(initial?.excerpt??"");
+  const [contentBlocks,setContentBlocks]=React.useState<Block[]>(()=>{try{const blocks=JSON.parse(initial?.contentBlocksJson??"[]");if(Array.isArray(blocks)&&blocks.length)return blocks;}catch{}return [{id:newId(),type:"p",text:initial?.contentMd??""}];});
+  const [titleImageUrl, setTitleImageUrl] = React.useState<string>(()=>initial?.titleImageKey?"/api/blog/assets/raw?key="+encodeURIComponent(initial.titleImageKey):"");
 
   const editorRefs = React.useRef(new Map<string, HTMLDivElement>());
   const [activeBlockId, setActiveBlockId] = React.useState<string | null>(null);
@@ -597,7 +603,7 @@ export function BlogEditorClient(props: EditorMode) {
   const [replaceImageId, setReplaceImageId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (props.mode !== "edit") return;
+    if (props.mode !== "edit"||props.initialPost) return;
     let cancelled = false;
     (async () => {
       setError(null);
@@ -725,7 +731,7 @@ export function BlogEditorClient(props: EditorMode) {
     }
   }
 
-  async function upload(kind: "TITLE" | "INLINE", files: FileList | null) {
+  async function upload(kind: "TITLE" | "INLINE", files: FileList | File[] | null) {
     if (!files || files.length === 0) return;
     setError(null);
     setBusy(true);
@@ -750,7 +756,7 @@ export function BlogEditorClient(props: EditorMode) {
         if (!res.ok || !ok) throw new Error(errorMsg);
         const url = json ? getStringField(json, "url") : null;
         setTitleImageUrl(url ?? "");
-        return;
+        return true;
       }
 
       const form = new FormData();
@@ -782,14 +788,15 @@ export function BlogEditorClient(props: EditorMode) {
 
         lastInsertedAfterId = spacer.id;
       }
+      return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "upload_failed");
+      setError(e instanceof Error ? e.message : "upload_failed");return false;
     } finally {
       setBusy(false);
     }
   }
 
-  async function replaceImageFromUpload(blockId: string, files: FileList | null) {
+  async function replaceImageFromUpload(blockId: string, files: FileList | File[] | null) {
     if (!files || files.length === 0) return;
     setError(null);
     setBusy(true);
@@ -810,8 +817,10 @@ export function BlogEditorClient(props: EditorMode) {
       const key = firstRow ? (getStringField(firstRow, "storageKey") ?? "") : "";
       if (!key) throw new Error("upload_failed");
       updateBlock(blockId, { storageKey: key, url: undefined });
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "upload_failed");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -1223,24 +1232,14 @@ export function BlogEditorClient(props: EditorMode) {
                 >
                   Aus Mediathek
                 </button>
-                <label className="inline-flex cursor-pointer items-center justify-center rounded-2xl bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-soft)] hover:brightness-[1.02]">
-                  Hochladen
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    onChange={(e) => {
-                      void upload("TITLE", e.currentTarget.files);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                </label>
+                <StagedUpload label="Titelbild auswählen" multiple={false} disabled={busy} onUpload={files=>upload("TITLE",files)}/>
               </div>
             </div>
             {titleImageUrl ? (
               <div className="mt-3 overflow-hidden rounded-2xl border border-[var(--border)]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={titleImageUrl} alt="Titelbild" className="h-44 w-full object-cover" />
+                <button type="button" disabled={busy} className="ui-button-secondary m-3" onClick={async()=>{setBusy(true);try{const id=await createIfNeeded();const response=await fetch(`/api/blog/posts/${id}/title-image`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({storageKey:""})});if(!response.ok)throw new Error("Titelbild konnte nicht entfernt werden.");setTitleImageUrl("");}catch(error){setError(error instanceof Error?error.message:"Entfernen fehlgeschlagen.");}finally{setBusy(false);}}}>Titelbild entfernen</button>
               </div>
             ) : null}
           </div>
@@ -1270,10 +1269,12 @@ export function BlogEditorClient(props: EditorMode) {
           multiple
           className="sr-only"
           onChange={(e) => {
-            void upload("INLINE", e.target.files);
+            setInlineFiles(Array.from(e.target.files??[]));
             if (e.currentTarget) e.currentTarget.value = "";
           }}
         />
+        {inlineFiles.length?<div className="mt-3"><FilePreviews files={inlineFiles} onRemove={index=>setInlineFiles(files=>files.filter((_,i)=>i!==index))}/><button type="button" disabled={busy} className="ui-button-primary mt-3" onClick={async()=>{if(await upload("INLINE",inlineFiles))setInlineFiles([]);}}>Bilder hochladen und einfügen</button></div>:null}
+
 
         <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
 	          <div>
@@ -1502,25 +1503,14 @@ export function BlogEditorClient(props: EditorMode) {
                           >
                             Aus Mediathek
                           </button>
-                          <label className="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold hover:bg-[var(--surface-2)]">
-                            Upload ersetzen
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="sr-only"
-                              onChange={(e) => {
-                                void replaceImageFromUpload(b.id, e.target.files);
-                                if (e.currentTarget) e.currentTarget.value = "";
-                              }}
-                            />
-                          </label>
+                          <StagedUpload label="Bild ersetzen" multiple={false} disabled={busy} onUpload={files=>replaceImageFromUpload(b.id,files)}/>
                         </div>
                       </div>
 	                    ) : (
 	                      <div className="relative">
                         {isActive && (b.type === "p" || b.type === "h1" || b.type === "h2" || b.type === "h3" || b.type === "quote") ? (
 	                          <div className="mb-2 flex flex-wrap gap-2">
-                            <select
+                            <AppSelect
                               value={b.type}
                               onChange={(e) => setBlockType(b.id, e.target.value as BlockType)}
                               onMouseDown={(e) => e.stopPropagation()}
@@ -1532,7 +1522,7 @@ export function BlogEditorClient(props: EditorMode) {
                               <option value="h2">Überschrift</option>
                               <option value="h3">Unterüberschrift</option>
                               <option value="quote">Zitat</option>
-                            </select>
+                            </AppSelect>
 	                            <button
 	                              type="button"
 	                              onMouseDown={(e) => e.preventDefault()}
@@ -1592,8 +1582,8 @@ export function BlogEditorClient(props: EditorMode) {
 	                            <button
 	                              type="button"
 	                              onMouseDown={(e) => e.preventDefault()}
-	                              onClick={() => {
-	                                const url = window.prompt("Link URL");
+	                              onClick={async () => {
+	                                const url = (await requestText("Link URL"));
 	                                if (!url) return;
 	                                applyInlineWrap("[", `](${url})`);
 	                              }}
@@ -1777,39 +1767,7 @@ export function BlogEditorClient(props: EditorMode) {
                         <p className="mt-1 text-xs text-[color:var(--muted)]">
                           Dateien landen global unter <span className="font-semibold">`blog/uploads`</span> und sind in allen Beiträgen nutzbar.
                         </p>
-                        <label className="mt-4 inline-flex cursor-pointer items-center justify-center rounded-2xl bg-[color:var(--accent)] px-5 py-2 text-sm font-semibold text-white shadow-[var(--shadow-soft)] hover:brightness-[1.02]">
-                          Dateien auswählen
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            className="sr-only"
-                            onChange={async (e) => {
-                              const files = e.currentTarget.files;
-                              if (!files || files.length === 0) return;
-                              setMediaBusy(true);
-                              setMediaError(null);
-                              try {
-                                const form = new FormData();
-                                for (const f of Array.from(files)) form.append("file", f, f.name);
-                                const res = await fetch("/api/blog/media/upload", { method: "POST", body: form });
-                                const json = await safeReadJson(res);
-                                const ok = Boolean(json && json.ok === true);
-                                const errorMsg = json && typeof json.error === "string" && json.error ? json.error : "upload_failed";
-                                if (!res.ok || !ok) throw new Error(errorMsg);
-                                const rowsRaw = json ? (json["rows"] as unknown) : null;
-                                const newRows = Array.isArray(rowsRaw) ? rowsRaw : [];
-                                setMediaRows((prev) => [...newRows, ...prev]);
-                                setMediaTab("library");
-                              } catch (err) {
-                                setMediaError(err instanceof Error ? err.message : "upload_failed");
-                              } finally {
-                                setMediaBusy(false);
-                                e.currentTarget.value = "";
-                              }
-                            }}
-                          />
-                        </label>
+<StagedUpload label="Bilder für die Mediathek" disabled={mediaBusy} onUpload={async files=>{setMediaBusy(true);setMediaError(null);try{const form=new FormData();for(const file of files)form.append('file',file,file.name);const response=await fetch('/api/blog/media/upload',{method:'POST',body:form});const result=await safeReadJson(response);if(!response.ok||!result?.ok)throw new Error('Bilder konnten nicht hochgeladen werden.');const rows=Array.isArray(result.rows)?result.rows:[];setMediaRows(previous=>[...rows,...previous]);setMediaTab('library');return true;}catch(error){setMediaError(error instanceof Error?error.message:'Upload fehlgeschlagen.');return false;}finally{setMediaBusy(false);}}}/>
                         {mediaBusy ? <p className="mt-3 text-xs text-[color:var(--muted)]">Upload läuft…</p> : null}
                       </div>
                     ) : (

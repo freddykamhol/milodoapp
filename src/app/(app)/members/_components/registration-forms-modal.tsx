@@ -1,5 +1,9 @@
 "use client";
 
+import { dateFormatter } from "@/lib/date-format";
+import { useHydrated } from "@/app/_components/state";
+import { confirmAction } from "@/app/_components/feedback";
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 import { createPortal } from "react-dom";
 
@@ -46,7 +50,7 @@ function generateFormPassword() {
 }
 
 export function RegistrationFormsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [mounted, setMounted] = React.useState(false);
+  const mounted = useHydrated();
   const [forms, setForms] = React.useState<RegistrationFormItem[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
@@ -54,7 +58,7 @@ export function RegistrationFormsModal({ open, onClose }: { open: boolean; onClo
   const [showCreate, setShowCreate] = React.useState(false);
   const [createdLink, setCreatedLink] = React.useState("");
   const [createdVerificationPassword, setCreatedVerificationPassword] = React.useState("");
-  const [draft, setDraft] = React.useState({
+  const [draft, setDraft] = React.useState(() => ({
     title: "Registrierungsformular",
     userLimit: "10",
     role: "PERSONAL",
@@ -62,9 +66,9 @@ export function RegistrationFormsModal({ open, onClose }: { open: boolean; onClo
     passwordMode: "SELF",
     verificationPassword: "",
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-  });
+  }));
 
-  React.useEffect(() => setMounted(true), []);
+
 
   const loadForms = React.useCallback(async () => {
     setLoading(true);
@@ -82,7 +86,9 @@ export function RegistrationFormsModal({ open, onClose }: { open: boolean; onClo
   }, []);
 
   React.useEffect(() => {
-    if (open) void loadForms();
+    if (!open) return;
+    const timer = setTimeout(() => void loadForms(), 0);
+    return () => clearTimeout(timer);
   }, [loadForms, open]);
 
   React.useEffect(() => {
@@ -132,7 +138,7 @@ export function RegistrationFormsModal({ open, onClose }: { open: boolean; onClo
   }
 
   async function deleteForm(form: RegistrationFormItem) {
-    const ok = window.confirm(`Registrierungsformular löschen: ${form.title}?`);
+    const ok = (await confirmAction(`Registrierungsformular löschen: ${form.title}?`));
     if (!ok) return;
 
     setError("");
@@ -356,13 +362,13 @@ function Select({ label, value, onChange, options }: { label: string; value: str
   return (
     <label className="block">
       <span className="text-xs font-semibold text-[color:var(--muted)]">{label}</span>
-      <select className={inputClass} value={value} onChange={(event) => onChange(event.target.value)}>
+      <AppSelect className={inputClass} value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map(([optionValue, label]) => (
           <option key={optionValue} value={optionValue}>
             {label}
           </option>
         ))}
-      </select>
+      </AppSelect>
     </label>
   );
 }
@@ -370,7 +376,7 @@ function Select({ label, value, onChange, options }: { label: string; value: str
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+  return dateFormatter({ day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
 function isUsable(form: RegistrationFormItem) {

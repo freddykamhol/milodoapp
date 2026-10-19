@@ -3,6 +3,12 @@ node_modules
 
 # next.js
 .next
+/.next-dev/
+/.next-ui-audit/
+/.next-responsive-audit/
+/artifacts/
+*.db-wal
+*.db-shm
 out
 
 # production

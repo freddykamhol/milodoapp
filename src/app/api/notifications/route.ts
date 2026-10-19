@@ -1,3 +1,4 @@
+import { dateFormatter } from "@/lib/date-format";
 import { NextResponse } from "next/server";
 import { and, desc, eq, gt, gte, isNull, lt, or, sql } from "drizzle-orm";
 
@@ -6,6 +7,7 @@ import { getViewer } from "@/lib/viewer";
 import { appointments, customers, notificationPrefs, notificationReads, notifications, timesheetMonths } from "@/db/schema";
 import { sendNotificationEmail } from "@/lib/notification-email";
 import { getAppUrl } from "@/lib/app-url";
+import { ensureResponsibilityIntervalNotifications } from "@/lib/responsibility-notifications";
 
 export const runtime = "nodejs";
 
@@ -56,7 +58,7 @@ async function ensureDemoNotifications(viewerId: number) {
           userId: viewerId,
           kind: "SHIFT_REMINDER",
           title: "Nächster Dienst",
-          body: `${nextConfirmed.appointment.title} • ${new Intl.DateTimeFormat("de-DE", {
+          body: `${nextConfirmed.appointment.title} • ${dateFormatter({
             weekday: "short",
             day: "2-digit",
             month: "2-digit",
@@ -148,7 +150,7 @@ async function ensureCustomerUnfilledReminder(viewer: { id: number; role: string
       userId: viewer.id,
       kind: "SYSTEM",
       title: "Dienst nicht besetzt",
-      body: `${a.title}\n${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(a.startAt)}`,
+      body: `${a.title}\n${dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(a.startAt)}`,
       href,
     });
 
@@ -163,7 +165,7 @@ async function ensureCustomerUnfilledReminder(viewer: { id: number; role: string
         sections: [
           { label: "Kunde", value: cust.name },
           { label: "Dienst", value: a.title },
-          { label: "Zeit", value: new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(a.startAt) },
+          { label: "Zeit", value: dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(a.startAt) },
         ],
         button: { label: "Zum Dienst", url: `${getAppUrl()}${href}` },
       }).catch(() => null);
@@ -181,6 +183,7 @@ export async function GET(request: Request) {
     await ensureBirthdayTestNotification().catch(() => null);
   }
   await ensureCustomerUnfilledReminder({ id: viewer.id, role: viewer.role, email: viewer.email ?? null });
+  await ensureResponsibilityIntervalNotifications(viewer.id).catch(() => null);
 
   const url = new URL(request.url);
   const view = url.searchParams.get("view") ?? "panel";

@@ -6,10 +6,12 @@ import { AppShell } from "../../_components/app-shell";
 import { db } from "@/lib/db";
 import {
   appointmentApplications,
-  appointmentFiles,
   appointmentRequirements,
   appointmentSectionMembers,
   appointmentSections,
+  appointmentVehicleMembers,
+  appointmentVehicles,
+  vehicles,
   users,
 } from "@/db/schema";
 
@@ -28,13 +30,13 @@ export default async function AppointmentDetailsPage({ params }: { params: Promi
     where: (t, { eq }) => eq(t.id, appointmentId),
   });
   if (!appointment) notFound();
+  if (appointment.bereich === "ERSTE_HILFE") redirect(`/courses/${appointment.id}`);
 
   const canAdmin = viewer.role === "ADMIN" || viewer.role === "VERWALTUNG";
 
-  const [customer, requirements, files, apps, sections] = await Promise.all([
+  const [customer, requirements, apps, sections, vehicleAssignments, vehicleList] = await Promise.all([
     db.query.customers.findFirst({ where: (t, { eq }) => eq(t.id, appointment.customerId) }),
     db.select().from(appointmentRequirements).where(eq(appointmentRequirements.appointmentId, appointmentId)),
-    db.select().from(appointmentFiles).where(eq(appointmentFiles.appointmentId, appointmentId)).orderBy(asc(appointmentFiles.id)),
     db
       .select({
         userId: users.id,
@@ -55,6 +57,15 @@ export default async function AppointmentDetailsPage({ params }: { params: Promi
       .from(appointmentSections)
       .where(eq(appointmentSections.appointmentId, appointmentId))
       .orderBy(asc(appointmentSections.sortOrder), asc(appointmentSections.id)),
+    db
+      .select({ assignmentId: appointmentVehicles.id, vehicleId: vehicles.id, licensePlate: vehicles.licensePlate, type: vehicles.type, userId: appointmentVehicleMembers.userId, username: users.username, qualRD: users.qualRD, qualAusb: users.qualAusb })
+      .from(appointmentVehicles)
+      .innerJoin(vehicles, eq(appointmentVehicles.vehicleId, vehicles.id))
+      .leftJoin(appointmentVehicleMembers, eq(appointmentVehicleMembers.appointmentVehicleId, appointmentVehicles.id))
+      .leftJoin(users, eq(appointmentVehicleMembers.userId, users.id))
+      .where(eq(appointmentVehicles.appointmentId, appointmentId))
+      .orderBy(asc(appointmentVehicles.sortOrder), asc(appointmentVehicles.id)),
+    canAdmin ? db.select({ id: vehicles.id, licensePlate: vehicles.licensePlate, type: vehicles.type }).from(vehicles).orderBy(asc(vehicles.licensePlate)) : [],
   ]);
 
   if (viewer.role === "KUNDE") {
@@ -74,6 +85,7 @@ export default async function AppointmentDetailsPage({ params }: { params: Promi
         .from(users)
         .orderBy(asc(users.username))
     : [];
+  const canDownloadDutyPlan = canAdmin || apps.some((app) => app.userId === viewer.id && app.status === "CONFIRMED");
 
   const sectionIds = sections.map((s) => s.id);
   const sectionMembers = sectionIds.length
@@ -93,18 +105,12 @@ export default async function AppointmentDetailsPage({ params }: { params: Promi
 
   return (
     <AppShell title="Termin Details" subtitle={`#${appointment.id} • ${appointment.title}`}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <Link href="/appointments" className="text-xs font-semibold text-[color:var(--accent)] hover:underline">
-          Zurück
-        </Link>
-        {canAdmin ? (
-          <Link
-            href={`/appointments/${appointment.id}/edit`}
-            className="text-xs font-semibold text-[color:var(--accent)] hover:underline"
-          >
-            Bearbeiten
-          </Link>
-        ) : null}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <Link href="/appointments" className="ui-button-secondary">Zurück</Link>
+          {canDownloadDutyPlan ? <a href={`/api/appointments/${appointment.id}/duty-plan`} className="ui-button-secondary">Dienstplan herunterladen</a> : null}
+        </div>
+        {canAdmin ? <Link href={`/appointments/${appointment.id}/edit`} className="ui-button-primary">Termin bearbeiten</Link> : null}
       </div>
 
       <AppointmentDetailsClient
@@ -143,11 +149,12 @@ export default async function AppointmentDetailsPage({ params }: { params: Promi
             : null
         }
         requirements={requirements.map((r) => ({ kind: r.kind, value: r.value, minCount: r.minCount }))}
-        files={files.map((f) => ({ id: f.id, fileName: f.fileName, mimeType: f.mimeType, sizeBytes: f.sizeBytes }))}
         applications={apps}
         sections={sections.map((s) => ({ id: s.id, title: s.title, sortOrder: s.sortOrder }))}
         sectionMembers={sectionMembers}
         allMembers={allMembers.filter((m) => m.role !== "KUNDE" && !m.locked)}
+        vehicleAssignments={vehicleAssignments}
+        vehicleList={vehicleList}
       />
     </AppShell>
   );

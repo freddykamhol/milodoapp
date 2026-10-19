@@ -1,3 +1,4 @@
+import type { QuestionnaireWithFiles } from "@/lib/questionnaire-types";
 import { NextResponse } from "next/server";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
@@ -87,7 +88,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: false, error: "missing_attachment" }, { status: 400 });
   }
 
-  let row: any = null;
+  let row: QuestionnaireWithFiles | undefined;
   try {
     row = await db.query.personalQuestionnaires.findFirst({
       where: (t, { eq }) => eq(t.id, questionnaireId),

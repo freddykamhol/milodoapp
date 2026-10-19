@@ -1,8 +1,9 @@
+import { dateFormatter } from "@/lib/date-format";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
 import { appointments, customers, notificationPrefs, notifications, users } from "@/db/schema";
-import { triggerAppointmentInquiry } from "@/lib/appointment-inquiry";
+import { createAppointmentInquiryNotifications, triggerAppointmentInquiry } from "@/lib/appointment-inquiry";
 import { sendNotificationEmail } from "@/lib/notification-email";
 import { eq } from "drizzle-orm";
 import { getViewer } from "@/lib/viewer";
@@ -63,7 +64,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
           userId: cust.accountUserId,
           kind: "SYSTEM",
           title: "Dienst freigegeben",
-          body: `${full.title}\n${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(full.startAt)}`,
+          body: `${full.title}\n${dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(full.startAt)}`,
           href: `/appointments/${appointmentId}`,
         });
 
@@ -82,7 +83,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
           void sendNotificationEmail({
             to,
             subject: "[Milodo] Dienst freigegeben",
-            preheader: `${full.title} • ${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(full.startAt)}`,
+            preheader: `${full.title} • ${dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(full.startAt)}`,
             title: "Dienst freigegeben",
             intro: "Dein angeforderter Dienst wurde freigegeben. Die Abfrage wird gestartet.",
             sections: [{ label: "Dienst", value: full.title }],
@@ -97,16 +98,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const kind = requestKindFor({ startAt: appointment.startAt, detailsJson: appointment.detailsJson });
 
-  await db.insert(notifications).values({
-    scope: "ALL",
-    kind,
-    title: kind === "URGENT_REQUESTS" ? "AKUTE ABFRAGE" : "Dienstabfrage",
-    body: `${appointment.title}\n${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(
-      appointment.startAt,
-    )}`,
-    href: `/appointments/${appointmentId}`,
-  });
-
+  await createAppointmentInquiryNotifications(appointmentId, kind);
   const result = await triggerAppointmentInquiry(appointmentId, kind).catch(() => null);
 
   return NextResponse.json({ ok: true, kind, result });

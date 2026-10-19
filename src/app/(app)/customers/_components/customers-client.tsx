@@ -1,5 +1,7 @@
 "use client";
 
+import {Pagination,usePagedItems} from "../../_components/pagination";
+import { confirmAction, notify } from "@/app/_components/feedback";
 import * as React from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
@@ -24,6 +26,7 @@ type Row = {
 
 export function CustomersClient({ initial }: { initial: Row[] }) {
   const router = useRouter();
+  const paged=usePagedItems(initial,"customers");
   const [openMenuForId, setOpenMenuForId] = React.useState<number | null>(null);
   const [menuPos, setMenuPos] = React.useState<{ top: number; left: number } | null>(null);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
@@ -48,7 +51,7 @@ export function CustomersClient({ initial }: { initial: Row[] }) {
   }, [openMenuForId]);
 
   return (
-    <div className="overflow-x-auto">
+    <div className="responsive-records overflow-x-auto">
       <div className="min-w-[860px] overflow-hidden rounded-2xl border border-[var(--border)]">
         <div className="grid grid-cols-[1fr_170px_180px_220px] gap-3 bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[color:var(--muted)]">
           <div>Firma</div>
@@ -57,7 +60,7 @@ export function CustomersClient({ initial }: { initial: Row[] }) {
           <div className="text-right">Aktion</div>
         </div>
         <ul className="divide-y divide-[var(--border)] bg-[var(--surface)]">
-          {initial.map((c) => {
+          {paged.items.map((c) => {
             const address = [c.street, c.houseNumber].filter(Boolean).join(" ").trim() || "—";
             const city = [c.plz, c.city].filter(Boolean).join(" ").trim() || "—";
             const canAccountActions = Boolean(c.accountUserId);
@@ -139,11 +142,11 @@ export function CustomersClient({ initial }: { initial: Row[] }) {
                             onClick={async () => {
                               setOpenMenuForId(null);
                               if (!c.accountUserId) return;
-                              const ok = window.confirm(`${lockLabel}: ${c.accountUsername ?? "Kundenlogin"}?`);
+                              const ok = (await confirmAction(`${lockLabel}: ${c.accountUsername ?? "Kundenlogin"}?`));
                               if (!ok) return;
                               const res = await fetch(`/api/members/${c.accountUserId}/lock`, { method: "PATCH" });
                               if (!res.ok) {
-                                window.alert("Aktion fehlgeschlagen.");
+                                notify("Aktion fehlgeschlagen.");
                                 return;
                               }
                               router.refresh();
@@ -158,15 +161,15 @@ export function CustomersClient({ initial }: { initial: Row[] }) {
                             onClick={async () => {
                               setOpenMenuForId(null);
                               if (!c.accountUserId) return;
-                              const ok = window.confirm(`Passwort zurücksetzen für ${c.accountUsername ?? "Kundenlogin"}?`);
+                              const ok = (await confirmAction(`Passwort zurücksetzen für ${c.accountUsername ?? "Kundenlogin"}?`));
                               if (!ok) return;
                               const res = await fetch(`/api/members/${c.accountUserId}/reset-password`, { method: "POST" });
                               const json = (await res.json().catch(() => null)) as { ok?: boolean } | null;
                               if (!res.ok || !json?.ok) {
-                                window.alert("Zurücksetzen fehlgeschlagen.");
+                                notify("Zurücksetzen fehlgeschlagen.");
                                 return;
                               }
-                              window.alert("E-Mail wurde versendet (falls SMTP aktiv).");
+                              notify("E-Mail wurde versendet (falls SMTP aktiv).");
                             }}
                             className="block w-full px-3 py-2 text-left text-sm font-semibold text-[color:var(--accent)] hover:bg-[var(--surface-2)] disabled:opacity-50"
                           >
@@ -176,11 +179,11 @@ export function CustomersClient({ initial }: { initial: Row[] }) {
                             type="button"
                             onClick={async () => {
                               setOpenMenuForId(null);
-                              const ok = window.confirm(`Kunde wirklich löschen: ${c.name}?`);
+                              const ok = (await confirmAction(`Kunde wirklich löschen: ${c.name}?`));
                               if (!ok) return;
                               const res = await fetch(`/api/customers/${c.id}`, { method: "DELETE" });
                               if (!res.ok) {
-                                window.alert("Löschen fehlgeschlagen.");
+                                notify("Löschen fehlgeschlagen.");
                                 return;
                               }
                               router.refresh();
@@ -199,6 +202,7 @@ export function CustomersClient({ initial }: { initial: Row[] }) {
           })}
         </ul>
       </div>
+      <Pagination {...paged}/>
     </div>
   );
 }

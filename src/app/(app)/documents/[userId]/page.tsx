@@ -1,3 +1,4 @@
+import { dateFormatter } from "@/lib/date-format";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
@@ -5,10 +6,11 @@ import { desc, eq } from "drizzle-orm";
 import { AppShell } from "../../_components/app-shell";
 import { Badge, Card } from "../../_components/ui";
 import { db } from "@/lib/db";
-import { documents, users } from "@/db/schema";
+import { documentExpiryPreferences, documentExpirySettings, documents, users } from "@/db/schema";
 import { DocumentUploader } from "./_components/document-uploader";
-import { DocumentDropzone } from "./_components/document-dropzone";
+import { DocumentFile } from "./_components/document-file";
 import { getViewer } from "@/lib/viewer";
+import { backfillDocumentExpiryDates } from "@/lib/document-expiry";
 
 type UserRow = typeof users.$inferSelect;
 type DocumentRow = typeof documents.$inferSelect;
@@ -16,63 +18,83 @@ type DocumentRow = typeof documents.$inferSelect;
 function classify(doc: DocumentRow) {
   if (doc.category === "CV") return "cv";
   if (doc.category === "TRAINING") return "training";
+  if (doc.category === "DRIVER_LICENSE") return "driver_license";
+  if (doc.category === "QUALIFICATION") return "qualification";
   if (doc.category === "CONTRACT") return "contract";
   const t = `${doc.title} ${doc.fileName}`.toLowerCase();
   if (t.includes("lebenslauf") || t.includes("cv")) return "cv";
   if (t.includes("fortbildung") || t.includes("ausbildung") || t.includes("nachweis")) return "training";
+  if (t.includes("fahrerlaubnis") || t.includes("führerschein") || t.includes("fuehrerschein")) return "driver_license";
+  if (t.includes("qualifikation")) return "qualification";
   if (t.includes("vertrag") || t.includes("arbeitsvertrag")) return "contract";
   return "other";
 }
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+  return dateFormatter({ day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+}
+
+function expiryCategory(doc: DocumentRow) {
+  if (doc.category === "TRAINING" || doc.category === "DRIVER_LICENSE" || doc.category === "QUALIFICATION") return doc.category;
+  const kind = classify(doc);
+  if (kind === "training") return "TRAINING";
+  if (kind === "driver_license") return "DRIVER_LICENSE";
+  if (kind === "qualification") return "QUALIFICATION";
+  return null;
+}
+
+function ExpiryStatus({ doc, reminderDays }: { doc: DocumentRow; reminderDays: number }) {
+  if (doc.expiryApprovalStatus === "PENDING" && doc.requestedExpiresAt) return <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">Genehmigung ausstehend · beantragt bis {formatDate(doc.requestedExpiresAt)}</span>;
+  if (!doc.expiresAt) return null;
+  const now = new Date();
+  const expired = doc.expiresAt.getTime() < now.getTime();
+  const upcoming = !expired && reminderDays > 0 && doc.expiresAt.getTime() <= now.getTime() + reminderDays * 86400000;
+  const style = expired ? "border-red-200 bg-red-50 text-red-800" : upcoming ? "border-amber-200 bg-amber-50 text-amber-800" : "border-[var(--border)] bg-[var(--surface-2)] text-[color:var(--muted)]";
+  return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-semibold ${style}`}>
+    {expired || upcoming ? <span aria-hidden="true" className="grid h-4 w-4 place-items-center rounded-full bg-current/10 text-[10px] font-black">!</span> : null}
+    {expired ? "Abgelaufen" : upcoming ? "Läuft bald ab" : "Gültig bis"} {formatDate(doc.expiresAt)}
+  </span>;
 }
 
 function Section({
   title,
   docs,
-  ownerId,
   canUpload,
   category,
+  reminderDaysByCategory,
 }: {
   title: string;
   docs: DocumentRow[];
-  ownerId: number;
   canUpload: boolean;
-  category: "CV" | "TRAINING" | "CONTRACT" | null;
+  category: "CV" | "TRAINING" | "DRIVER_LICENSE" | "QUALIFICATION" | "CONTRACT" | null;
+  reminderDaysByCategory: Record<string, number>;
 }) {
   return (
     <Card title={title} description={docs.length ? `${docs.length} Dokument(e)` : "Noch keine Dokumente."}>
       {docs.length ? (
         <ul className="space-y-2">
-          {docs.slice(0, 8).map((d) => (
+          {docs.map((d) => (
             <li
               key={d.id}
-              className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
+              className="flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{d.title}</p>
                 <p className="mt-1 truncate text-xs text-[color:var(--muted)]">
                   {d.fileName} • {formatDate(d.createdAt)}
                 </p>
+                {d.expiresAt || d.requestedExpiresAt ? <div className="mt-2"><ExpiryStatus doc={d} reminderDays={reminderDaysByCategory[expiryCategory(d) ?? ""] ?? 0} /></div> : null}
               </div>
-              <Link
-                href={`/api/documents/${d.id}/download`}
-                className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-semibold hover:bg-[var(--surface-2)]"
-              >
-                Download
-              </Link>
+              <div className="min-w-0 sm:w-1/2"><DocumentFile id={d.id} name={d.fileName} mimeType={d.mimeType??'application/octet-stream'} canDelete={canUpload}/></div>
             </li>
           ))}
         </ul>
       ) : (
         canUpload && category ? (
-          <DocumentDropzone
-            ownerId={ownerId}
-            category={category}
-            label="Noch leer"
-            description="Zieh ein Dokument hierher oder klicke zum Hochladen."
-          />
+          <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-2)] p-6 text-center">
+            <p className="text-sm font-semibold">Noch leer</p>
+            <p className="mt-1 text-xs text-[color:var(--muted)]">Dokumente können oben über das Upload-Formular hinzugefügt werden.</p>
+          </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-2)] p-6 text-center">
             <p className="text-sm font-semibold">Noch leer</p>
@@ -104,6 +126,12 @@ export default async function DocumentsUserPage({
   if (!canView) notFound();
   const canUpload = isAdminOrVerwaltung || viewer.id === target.id;
 
+  await backfillDocumentExpiryDates();
+  await db.insert(documentExpiryPreferences).values({ id: 1 }).onConflictDoNothing();
+  const expiryPreferences = await db.query.documentExpiryPreferences.findFirst({ where: (t, { eq }) => eq(t.id, 1) });
+  const expirySettings = await db.select().from(documentExpirySettings);
+  const reminderDaysByCategory = Object.fromEntries(expirySettings.map((setting) => [setting.category, setting.reminderDaysBefore])) as Record<string, number>;
+
   // SFTP checks (exists/mkdir) are intentionally not done here to keep page loads fast.
   // Download/Upload endpoints handle availability errors.
 
@@ -117,11 +145,13 @@ export default async function DocumentsUserPage({
 
   const cv = docsOnSftp.filter((d) => classify(d) === "cv");
   const training = docsOnSftp.filter((d) => classify(d) === "training");
+  const driverLicenses = docsOnSftp.filter((d) => classify(d) === "driver_license");
+  const qualifications = docsOnSftp.filter((d) => classify(d) === "qualification");
   const contract = docsOnSftp.filter((d) => classify(d) === "contract");
 
   return (
     <AppShell title="Dokumente" subtitle={`Mitglied: ${target.username}`}>
-      <DocumentUploader ownerId={target.id} canUpload={canUpload} />
+      <DocumentUploader ownerId={target.id} canUpload={canUpload} manualExpiryRequiresApproval={expiryPreferences?.manualExpiryRequiresApproval ?? false} />
 
       <Card
         title="Übersicht"
@@ -148,18 +178,20 @@ export default async function DocumentsUserPage({
       </Card>
 
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Section title="Lebenslauf" docs={cv} ownerId={target.id} canUpload={canUpload} category="CV" />
+        <Section title="Lebenslauf" docs={cv} canUpload={canUpload} category="CV" reminderDaysByCategory={reminderDaysByCategory} />
         <Section
           title="Aus- und Fortbildungsnachweise"
           docs={training}
-          ownerId={target.id}
           canUpload={canUpload}
           category="TRAINING"
+          reminderDaysByCategory={reminderDaysByCategory}
         />
-        <Section title="Arbeitsverträge" docs={contract} ownerId={target.id} canUpload={canUpload} category="CONTRACT" />
+        <Section title="Fahrerlaubnisse" docs={driverLicenses} canUpload={canUpload} category="DRIVER_LICENSE" reminderDaysByCategory={reminderDaysByCategory} />
+        <Section title="Qualifikationen" docs={qualifications} canUpload={canUpload} category="QUALIFICATION" reminderDaysByCategory={reminderDaysByCategory} />
+        <Section title="Arbeitsverträge" docs={contract} canUpload={canUpload} category="CONTRACT" reminderDaysByCategory={reminderDaysByCategory} />
       </section>
 
-      <Section title="Alle Dokumente" docs={docsOnSftp} ownerId={target.id} canUpload={canUpload} category={null} />
+      <Section title="Alle Dokumente" docs={docsOnSftp} canUpload={canUpload} category={null} reminderDaysByCategory={reminderDaysByCategory} />
     </AppShell>
   );
 }

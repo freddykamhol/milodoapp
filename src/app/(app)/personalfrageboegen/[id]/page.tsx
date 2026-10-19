@@ -1,3 +1,4 @@
+import type { QuestionnaireWithFiles } from "@/lib/questionnaire-types";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -57,7 +58,7 @@ export default async function PersonalfragebogenDetailsPage({ params }: { params
 
   await ensurePersonalfrageboegenSchema();
 
-  let row: any = null;
+  let row: QuestionnaireWithFiles | undefined;
   try {
     row = await db.query.personalQuestionnaires.findFirst({
       where: (t, { eq }) => eq(t.id, questionnaireId),

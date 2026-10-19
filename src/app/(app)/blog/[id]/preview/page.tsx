@@ -233,7 +233,7 @@ export default async function BlogPreviewPage({ params }: { params: Promise<{ id
   const post = await db.query.blogPosts.findFirst({ where: (t, { eq }) => eq(t.id, postId) });
   if (!post) notFound();
 
-  const blocks = safeBlocks((post as any).contentBlocksJson ?? "[]");
+  const blocks = safeBlocks(post.contentBlocksJson ?? "[]");
   const titleImageKey = String(post.titleImageKey || "").trim();
   const titleImageUrl = titleImageKey ? `/api/blog/assets/raw?key=${encodeURIComponent(titleImageKey)}` : "";
 

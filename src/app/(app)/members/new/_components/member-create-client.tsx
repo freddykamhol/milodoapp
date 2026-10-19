@@ -1,5 +1,7 @@
 "use client";
 
+import { notify } from "@/app/_components/feedback";
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
@@ -17,6 +19,7 @@ export function MemberCreateClient() {
 
   const [intern, setIntern] = React.useState({
     role: "PERSONAL" as "ADMIN" | "VERWALTUNG" | "PERSONAL",
+    contractType: "" as "" | "GFB" | "HONORAR",
     qualRD: "" as "" | "SAN" | "RH" | "RS" | "RA" | "NFS",
     qualAusb: "" as "" | "AUSBILDER",
     einsatzort: "" as "" | "AUSBILDUNG" | "RD" | "BEIDE",
@@ -49,17 +52,19 @@ export function MemberCreateClient() {
   function validate() {
     if (!intern.firstName.trim() || !intern.lastName.trim()) return "Vor- und Nachname fehlen.";
     if (!intern.email.trim()) return "E-Mail fehlt.";
+    if (!intern.contractType) return "Vertragsart fehlt.";
     return null;
   }
 
   async function submit() {
     const err = validate();
-    if (err) return window.alert(err);
+    if (err) return notify(err);
     setBusy(true);
     try {
       const payload = {
         kind,
         role: intern.role,
+        contractType: intern.contractType,
         qualRD: intern.qualRD || null,
         qualAusb: intern.qualAusb || null,
         einsatzort: intern.einsatzort || null,
@@ -88,12 +93,12 @@ export function MemberCreateClient() {
         throw new Error(err);
       }
 
-      window.alert(`Mitglied angelegt: ${json.username}${json.emailSent ? " (Willkommensmail gesendet)" : ""}`);
+      notify(`Mitglied angelegt: ${json.username}${json.emailSent ? " (Willkommensmail gesendet)" : ""}`);
       router.push("/members");
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Fehler beim Anlegen.";
-      window.alert(msg);
+      notify(msg);
     } finally {
       setBusy(false);
     }
@@ -111,7 +116,7 @@ export function MemberCreateClient() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <label className="block">
             <span className="text-xs font-semibold text-[color:var(--muted)]">Rolle</span>
-            <select
+            <AppSelect
               className={inputClass}
               value={intern.role}
               onChange={(e) => setIntern((v) => ({ ...v, role: e.target.value as typeof v.role }))}
@@ -119,11 +124,19 @@ export function MemberCreateClient() {
               <option value="PERSONAL">Personal</option>
               <option value="VERWALTUNG">Verwaltung</option>
               <option value="ADMIN">Admin</option>
-            </select>
+            </AppSelect>
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold text-[color:var(--muted)]">Vertragsart</span>
+            <AppSelect className={inputClass} value={intern.contractType} onChange={(e) => setIntern((v) => ({ ...v, contractType: e.target.value as typeof v.contractType }))}>
+              <option value="">Bitte auswählen</option>
+              <option value="GFB">GfB-Vertrag</option>
+              <option value="HONORAR">Honorar</option>
+            </AppSelect>
           </label>
           <label className="block">
             <span className="text-xs font-semibold text-[color:var(--muted)]">Einsatzort</span>
-            <select
+            <AppSelect
               className={inputClass}
               value={intern.einsatzort}
               onChange={(e) => setIntern((v) => ({ ...v, einsatzort: e.target.value as typeof v.einsatzort }))}
@@ -132,12 +145,12 @@ export function MemberCreateClient() {
               <option value="RD">RD</option>
               <option value="AUSBILDUNG">Ausbildung</option>
               <option value="BEIDE">Beide</option>
-            </select>
+            </AppSelect>
           </label>
 
           <label className="block">
             <span className="text-xs font-semibold text-[color:var(--muted)]">Qualifikation RD</span>
-            <select
+            <AppSelect
               className={inputClass}
               value={intern.qualRD}
               onChange={(e) => setIntern((v) => ({ ...v, qualRD: e.target.value as typeof v.qualRD }))}
@@ -148,18 +161,18 @@ export function MemberCreateClient() {
               <option value="RS">RS</option>
               <option value="RA">RA</option>
               <option value="NFS">NFS</option>
-            </select>
+            </AppSelect>
           </label>
           <label className="block">
             <span className="text-xs font-semibold text-[color:var(--muted)]">Qualifikation Ausbildung</span>
-            <select
+            <AppSelect
               className={inputClass}
               value={intern.qualAusb}
               onChange={(e) => setIntern((v) => ({ ...v, qualAusb: e.target.value as typeof v.qualAusb }))}
             >
               <option value="">—</option>
               <option value="AUSBILDER">Ausbilder</option>
-            </select>
+            </AppSelect>
           </label>
 
           <label className="block">
@@ -220,7 +233,7 @@ export function MemberCreateClient() {
           <label className="block">
             <span className="text-xs font-semibold text-[color:var(--muted)]">Ort</span>
             {internCityOptions.length > 1 ? (
-              <select
+              <AppSelect
                 className={inputClass}
                 value={intern.ort}
                 onChange={(e) => setIntern((v) => ({ ...v, ort: e.target.value }))}
@@ -231,7 +244,7 @@ export function MemberCreateClient() {
                     {c}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             ) : (
               <input
                 className={inputClass}

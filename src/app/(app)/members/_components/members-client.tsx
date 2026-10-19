@@ -1,12 +1,16 @@
 "use client";
 
+import { dateFormatter } from "@/lib/date-format";
+import { Pagination, usePagedItems } from "../../_components/pagination";
+import { confirmAction, notify, requestPassword } from "@/app/_components/feedback";
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 
 import { Badge } from "../../_components/ui";
-import { RegistrationFormsModal } from "./registration-forms-modal";
+const RegistrationFormsModal=React.lazy(()=>import("./registration-forms-modal").then(module=>({default:module.RegistrationFormsModal})));
 
 export type MemberItem = {
   id: number;
@@ -14,6 +18,7 @@ export type MemberItem = {
   firstName: string;
   lastName: string;
   role: string;
+  contractType: "GFB" | "HONORAR" | null;
   geb: string | null;
   qualRD: string | null;
   qualAusb: string | null;
@@ -27,10 +32,11 @@ type FilterState = {
   role: string;
   qualRD: string;
   qualAusb: string;
+  contractType: string;
 };
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+  return dateFormatter({ day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
 function isBirthdayToday(iso: string | null) {
@@ -61,6 +67,7 @@ export function MembersClient({
     role: "",
     qualRD: "",
     qualAusb: "",
+    contractType: "",
   });
 
   const birthdays = React.useMemo(
@@ -78,9 +85,13 @@ export function MembersClient({
       if (filter.role && m.role !== filter.role) return false;
       if (filter.qualRD && (m.qualRD ?? "") !== filter.qualRD) return false;
       if (filter.qualAusb && (m.qualAusb ?? "") !== filter.qualAusb) return false;
+      if (filter.contractType === "__MISSING__" && m.contractType !== null) return false;
+      if (filter.contractType && filter.contractType !== "__MISSING__" && m.contractType !== filter.contractType) return false;
       return true;
     });
   }, [filter, members]);
+
+  const paged=usePagedItems(filtered,filter);
 
   const roles = React.useMemo(() => Array.from(new Set(members.map((m) => m.role))).sort(), [members]);
   const qualRDs = React.useMemo(
@@ -182,7 +193,7 @@ export function MembersClient({
           ) : null}
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
           <label className="block md:col-span-2">
             <span className="text-xs font-semibold text-[color:var(--muted)]">Suche</span>
             <input
@@ -195,7 +206,7 @@ export function MembersClient({
 
           <label className="block">
             <span className="text-xs font-semibold text-[color:var(--muted)]">Rolle</span>
-            <select
+            <AppSelect
               className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
               value={filter.role}
               onChange={(e) => setFilter((f) => ({ ...f, role: e.target.value }))}
@@ -206,12 +217,12 @@ export function MembersClient({
                   {r}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </label>
 
           <label className="block">
             <span className="text-xs font-semibold text-[color:var(--muted)]">Qualifikation RD</span>
-            <select
+            <AppSelect
               className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
               value={filter.qualRD}
               onChange={(e) => setFilter((f) => ({ ...f, qualRD: e.target.value }))}
@@ -222,12 +233,12 @@ export function MembersClient({
                   {q}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </label>
 
           <label className="block">
             <span className="text-xs font-semibold text-[color:var(--muted)]">Qualifikation Ausbildung</span>
-            <select
+            <AppSelect
               className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
               value={filter.qualAusb}
               onChange={(e) => setFilter((f) => ({ ...f, qualAusb: e.target.value }))}
@@ -238,14 +249,28 @@ export function MembersClient({
                   {q}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </label>
+
+          {canManage ? <label className="block">
+            <span className="text-xs font-semibold text-[color:var(--muted)]">Vertragsart</span>
+            <AppSelect
+              className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
+              value={filter.contractType}
+              onChange={(e) => setFilter((f) => ({ ...f, contractType: e.target.value }))}
+            >
+              <option value="">Alle</option>
+              <option value="GFB">GfB-Vertrag</option>
+              <option value="HONORAR">Honorar</option>
+              <option value="__MISSING__">Nicht festgelegt</option>
+            </AppSelect>
+          </label> : null}
 
           <div className="block">
             <span className="text-xs font-semibold text-transparent">Label</span>
             <button
               type="button"
-              onClick={() => setFilter({ q: "", role: "", qualRD: "", qualAusb: "" })}
+              onClick={() => setFilter({ q: "", role: "", qualRD: "", qualAusb: "", contractType: "" })}
               className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-3 text-xs font-semibold text-[color:var(--muted)] shadow-[0_10px_24px_rgba(11,18,32,0.05)] hover:bg-[var(--surface-2)]"
             >
               Zurücksetzen
@@ -254,7 +279,7 @@ export function MembersClient({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+      <div className="responsive-records overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
         <div
           className={[
             "min-w-[740px] grid gap-3 bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[color:var(--muted)]",
@@ -268,7 +293,7 @@ export function MembersClient({
           {canManage ? <div className="text-right">Aktion</div> : null}
         </div>
         <ul className="min-w-[740px] divide-y divide-[var(--border)]">
-          {filtered.map((m) => (
+          {paged.items.map((m) => (
             <li
               key={m.id}
               className={[
@@ -290,7 +315,7 @@ export function MembersClient({
                 </div>
               </div>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{m.firstName || "—"}</p>
+                <p className="truncate text-sm font-semibold">{m.firstName || "—"}{canManage && m.contractType === null ? <span className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800" title="Vertragsart fehlt" aria-label="Vertragsart fehlt">!</span> : null}</p>
                 <p className="mt-1 truncate text-xs font-semibold text-[color:var(--muted)]">{m.role}</p>
               </div>
               <div className="text-xs font-semibold text-[color:var(--muted)]">
@@ -351,15 +376,38 @@ export function MembersClient({
                           >
                             Bearbeiten
                           </Link>
+                          {canManage ? <button
+                            type="button"
+                            onClick={async () => {
+                              setOpenMenuForId(null);
+                              const password = await requestPassword("Eigenes Passwort zur Bestätigung des Personalakten-Downloads eingeben:");
+                              if (!password) return;
+                              const res = await fetch(`/api/members/${m.id}/personnel-file`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password }) });
+                              if (!res.ok) {
+                                notify(res.status === 403 ? "Passwort ist nicht korrekt." : "Personalakte konnte nicht heruntergeladen werden.");
+                                return;
+                              }
+                              const blob = await res.blob();
+                              const url = URL.createObjectURL(blob);
+                              const link = document.createElement("a");
+                              link.href = url;
+                              link.download = `Personalakte-${m.username}.pdf`;
+                              link.click();
+                              URL.revokeObjectURL(url);
+                            }}
+                            className="block w-full px-3 py-2 text-left text-sm font-semibold text-[color:var(--accent)] hover:bg-[var(--surface-2)]"
+                          >
+                            Personalakte herunterladen
+                          </button> : null}
                           <button
                             type="button"
                             onClick={async () => {
                               setOpenMenuForId(null);
-                              const ok = window.confirm(`${m.locked ? "Entsperren" : "Sperren"}: ${m.username}?`);
+                              const ok = (await confirmAction(`${m.locked ? "Entsperren" : "Sperren"}: ${m.username}?`));
                               if (!ok) return;
                               const res = await fetch(`/api/members/${m.id}/lock`, { method: "PATCH" });
                               if (!res.ok) {
-                                window.alert("Aktion fehlgeschlagen.");
+                                notify("Aktion fehlgeschlagen.");
                                 return;
                               }
                               router.refresh();
@@ -373,13 +421,13 @@ export function MembersClient({
                               type="button"
                               onClick={async () => {
                                 setOpenMenuForId(null);
-                                const ok = window.confirm(`Registrierung bestätigen: ${m.username}?`);
+                                const ok = (await confirmAction(`Registrierung bestätigen: ${m.username}?`));
                                 if (!ok) return;
                                 const res = await fetch(`/api/member-registration-forms/submissions/${m.id}/approve`, {
                                   method: "POST",
                                 });
                                 if (!res.ok) {
-                                  window.alert("Bestätigung fehlgeschlagen.");
+                                  notify("Bestätigung fehlgeschlagen.");
                                   return;
                                 }
                                 router.refresh();
@@ -393,15 +441,15 @@ export function MembersClient({
                             type="button"
                             onClick={async () => {
                               setOpenMenuForId(null);
-                              const ok = window.confirm(`Passwort zurücksetzen für ${m.username}?`);
+                              const ok = (await confirmAction(`Passwort zurücksetzen für ${m.username}?`));
                               if (!ok) return;
                               const res = await fetch(`/api/members/${m.id}/reset-password`, { method: "POST" });
                               const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
                               if (!res.ok || !json?.ok) {
-                                window.alert("Zurücksetzen fehlgeschlagen.");
+                                notify("Zurücksetzen fehlgeschlagen.");
                                 return;
                               }
-                              window.alert("Reset-Link wurde per E-Mail versendet (falls SMTP aktiv).");
+                              notify("Reset-Link wurde per E-Mail versendet (falls SMTP aktiv).");
                             }}
                             className="block w-full px-3 py-2 text-left text-sm font-semibold text-[color:var(--accent)] hover:bg-[var(--surface-2)]"
                           >
@@ -411,11 +459,11 @@ export function MembersClient({
                             type="button"
                             onClick={async () => {
                               setOpenMenuForId(null);
-                              const ok = window.confirm(`Mitglied wirklich löschen: ${m.username}?`);
+                              const ok = (await confirmAction(`Mitglied wirklich löschen: ${m.username}?`));
                               if (!ok) return;
                               const res = await fetch(`/api/members/${m.id}`, { method: "DELETE" });
                               if (!res.ok) {
-                                window.alert("Löschen fehlgeschlagen.");
+                                notify("Löschen fehlgeschlagen.");
                                 return;
                               }
                               router.refresh();
@@ -438,7 +486,8 @@ export function MembersClient({
           <p className="px-4 py-6 text-sm text-[color:var(--muted)]">Keine Mitglieder gefunden.</p>
         ) : null}
       </div>
-      <RegistrationFormsModal open={registrationFormsOpen} onClose={() => setRegistrationFormsOpen(false)} />
+      <Pagination {...paged}/>
+      {registrationFormsOpen?<React.Suspense fallback={<p role="status" className="text-sm">Formular wird geladen …</p>}><RegistrationFormsModal open onClose={() => setRegistrationFormsOpen(false)} /></React.Suspense>:null}
     </div>
   );
 }

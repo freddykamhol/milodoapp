@@ -1,19 +1,23 @@
 "use client";
 
+import { notify } from "@/app/_components/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "../../_components/ui";
 import { IconLock, IconUnlock } from "../../_components/icons";
+import { inquiryServiceTypes, type InquiryServiceType } from "@/lib/inquiry-service-types";
 
 const inputClass =
   "mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]";
 
 export function ProfileEditClient({
   username,
+  showInquiryServicePreferences,
   initial,
 }: {
   username: string;
+  showInquiryServicePreferences: boolean;
   initial: {
     firstName: string;
     lastName: string;
@@ -30,6 +34,7 @@ export function ProfileEditClient({
     publicQualifications: boolean;
     publicAddress: boolean;
     publicContact: boolean;
+    inquiryServiceTypes: InquiryServiceType[];
   };
 }) {
   const router = useRouter();
@@ -57,18 +62,35 @@ export function ProfileEditClient({
           publicQualifications: draft.publicQualifications,
           publicAddress: draft.publicAddress,
           publicContact: draft.publicContact,
+          ...(showInquiryServicePreferences ? { inquiryServiceTypes: draft.inquiryServiceTypes } : {}),
         }),
       });
       const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
       if (!res.ok || !json?.ok) throw new Error(json?.error || "save_failed");
-      window.alert("Gespeichert.");
+      notify("Gespeichert.");
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Speichern fehlgeschlagen.";
-      window.alert(msg);
+      notify(msg);
     } finally {
       setBusy(false);
     }
+  }
+
+  function toggleInquiryService(value: InquiryServiceType, checked: boolean) {
+    setDraft((current) => {
+      if (value === "RD_BOERSE") {
+        const rdTypes = inquiryServiceTypes.filter((item) => item.value.startsWith("RD_") && item.value !== "RD_BOERSE").map((item) => item.value);
+        const withoutRd = current.inquiryServiceTypes.filter((item) => item !== "RD_BOERSE" && !item.startsWith("RD_"));
+        return { ...current, inquiryServiceTypes: checked ? [...withoutRd, "RD_BOERSE", ...rdTypes] : withoutRd };
+      }
+      return {
+        ...current,
+        inquiryServiceTypes: checked
+          ? Array.from(new Set([...current.inquiryServiceTypes, value]))
+          : current.inquiryServiceTypes.filter((item) => item !== value),
+      };
+    });
   }
 
   return (
@@ -107,6 +129,34 @@ export function ProfileEditClient({
           />
         </div>
       </div>
+
+      {showInquiryServicePreferences ? <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-soft)]">
+        <p className="text-sm font-semibold">Dienstabfragen erhalten</p>
+        <p className="mt-1 text-xs text-[color:var(--muted)]">Wähle die Bereiche und Rettungsdienst-Dienstarten, für die du persönliche Dienstabfragen per E-Mail, Prowl und in der App erhalten möchtest. Es werden weiterhin nur Dienste berücksichtigt, deren hinterlegte Personalqualifikationen zu deinem Profil passen. Ein zentral eingerichteter Telegram-Verteiler bleibt davon unberührt.</p>
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {inquiryServiceTypes.filter((option) => !option.value.startsWith("RD_") || option.value === "RD_BOERSE").map((option) => {
+            const checked = draft.inquiryServiceTypes.includes(option.value);
+            return <label key={option.value} className="group flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm transition hover:border-[color:var(--ring)] hover:bg-[var(--surface)]">
+              <input type="checkbox" className="sr-only" checked={checked} disabled={busy} onChange={(event) => toggleInquiryService(option.value, event.target.checked)} />
+              <ProfileCheck checked={checked} />
+              <span>{option.label}</span>
+            </label>;
+          })}
+        </div>
+        {draft.inquiryServiceTypes.includes("RD_BOERSE") ? <>
+        <p className="mt-4 text-xs font-semibold text-[color:var(--muted)]">RD-Dienstarten</p>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {inquiryServiceTypes.filter((option) => option.value.startsWith("RD_") && option.value !== "RD_BOERSE").map((option) => {
+            const checked = draft.inquiryServiceTypes.includes(option.value);
+            return <label key={option.value} className="group flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm transition hover:border-[color:var(--ring)] hover:bg-[var(--surface)]">
+              <input type="checkbox" className="sr-only" checked={checked} disabled={busy} onChange={(event) => toggleInquiryService(option.value, event.target.checked)} />
+              <ProfileCheck checked={checked} />
+              <span>{option.label}</span>
+            </label>;
+          })}
+        </div>
+        </> : null}
+      </div> : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <label className="block">
@@ -166,6 +216,12 @@ export function ProfileEditClient({
       </div>
     </div>
   );
+}
+
+function ProfileCheck({ checked }: { checked: boolean }) {
+  return <span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center rounded-[5px] border transition ${checked ? "border-[color:var(--accent)] bg-[color:var(--accent)] text-white" : "border-[var(--muted)] bg-[var(--surface)] text-transparent"}`}>
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="m3.2 8.2 3 3 6.5-6.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+  </span>;
 }
 
 function VisibilityRow({

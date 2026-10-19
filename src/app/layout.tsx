@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FeedbackHost } from "./_components/feedback";
 
 export const metadata: Metadata = {
   title: "milodo-medical",
@@ -11,7 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="stylesheet" href="/styles.css" />
       </head>
-      <body>{children}</body>
+      <body>{children}<FeedbackHost /></body>
     </html>
   );
 }

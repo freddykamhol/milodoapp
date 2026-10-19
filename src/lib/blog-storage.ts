@@ -147,7 +147,7 @@ export async function deleteBlogExport({
     const res = await withSftp(async (client, basePath) => {
       const remoteDir = path.posix.join(basePath, baseDir);
       try {
-        await (client as any).rmdir(remoteDir, true);
+        await client.rmdir(remoteDir, true);
       } catch {
         // ignore (missing dir etc.)
       }

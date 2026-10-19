@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { eq } from "drizzle-orm";
 
 import { AppShell } from "../../../_components/app-shell";
 import { Badge, Card } from "../../../_components/ui";
 import { db } from "@/lib/db";
-import { customers } from "@/db/schema";
+import { appointmentRequirements, customers } from "@/db/schema";
 import { getViewer } from "@/lib/viewer";
+import { serviceAreaLabel } from "@/lib/service-area-label";
 
 import { AppointmentEditClient } from "./_components/appointment-edit-client";
 
@@ -22,8 +24,14 @@ export default async function AppointmentEditPage({ params }: { params: Promise<
     where: (t, { eq }) => eq(t.id, appointmentId),
   });
   if (!row) notFound();
+  if (row.bereich === "ERSTE_HILFE") redirect(`/courses/${row.id}`);
 
-  const customerRows = await db.select({ id: customers.id, name: customers.name }).from(customers).orderBy(customers.name);
+  const [customerRows, requirementRows] = await Promise.all([
+    db.select({ id: customers.id, name: customers.name }).from(customers).orderBy(customers.name),
+    db.select({ kind: appointmentRequirements.kind, value: appointmentRequirements.value, minCount: appointmentRequirements.minCount })
+      .from(appointmentRequirements)
+      .where(eq(appointmentRequirements.appointmentId, appointmentId)),
+  ]);
 
   return (
     <AppShell title="Termin bearbeiten" subtitle="Start/Ende, Ort und Details anpassen.">
@@ -38,7 +46,7 @@ export default async function AppointmentEditPage({ params }: { params: Promise<
       >
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="muted">Termin #{row.id}</Badge>
-          <Badge tone="muted">{row.bereich}</Badge>
+          <Badge tone="muted">{serviceAreaLabel(row.bereich)}</Badge>
           {row.dienstart ? <Badge tone="muted">{row.dienstart}</Badge> : null}
         </div>
 
@@ -56,6 +64,12 @@ export default async function AppointmentEditPage({ params }: { params: Promise<
                 dienstart: row.dienstart ?? null,
                 staffingStatus: row.staffingStatus,
                 state: row.state,
+                courseType:row.courseType,
+                participantLimit:row.courseParticipantLimit,
+                eventName: row.eventName,
+                notes: row.notes,
+                detailsJson: row.detailsJson,
+                requirements: requirementRows,
               }}
               customers={customerRows}
             />

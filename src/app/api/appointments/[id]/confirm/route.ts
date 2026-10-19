@@ -17,6 +17,7 @@ export async function POST(
 
   const viewer = await getViewer();
   if (!viewer) return NextResponse.json({ ok: false, error: "no_viewer" }, { status: 401 });
+  if (viewer.role !== "ADMIN" && viewer.role !== "VERWALTUNG") return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 
   const appointment = await db.query.appointments.findFirst({
     where: (table, { eq }) => eq(table.id, appointmentId),
@@ -26,11 +27,7 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   }
 
-  const now = new Date();
-  const cutoff = new Date(now.getTime() - 15 * 60 * 1000);
-  const ended = appointment.endAt ? appointment.endAt < cutoff : appointment.startAt < cutoff;
-
-  if (appointment.state !== "OPEN" || ended) {
+  if (appointment.state !== "OPEN") {
     return NextResponse.json({ ok: false, error: "not_open" }, { status: 409 });
   }
 

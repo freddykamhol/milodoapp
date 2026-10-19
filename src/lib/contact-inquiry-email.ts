@@ -2,11 +2,10 @@ import { buildEmailHtml } from "@/lib/email";
 import { sendSmtpMail } from "@/lib/smtp-mail";
 import path from "node:path";
 
-const CONTACT_INQUIRY_TO = "anfrage@milodo-medical.de";
 // Temporärer BCC: entfernen, sobald die Übergangsphase beendet ist.
-const CONTACT_INQUIRY_BCC = "f.karamazmy@katechnologies.de";
 
 export async function sendContactInquiryEmail(props: {
+  to: string[];
   subject: string;
   sections: Array<{ label: string; value: string }>;
   preheader?: string;
@@ -23,8 +22,8 @@ export async function sendContactInquiryEmail(props: {
   });
 
   return sendSmtpMail({
-    to: CONTACT_INQUIRY_TO,
-    bcc: CONTACT_INQUIRY_BCC,
+    to: props.to[0],
+    bcc: props.to.slice(1),
     subject: props.subject,
     text,
     html,

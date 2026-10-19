@@ -14,6 +14,7 @@ export const runtime = "nodejs";
 type InternPayload = {
   kind: "INTERN";
   role?: "ADMIN" | "VERWALTUNG" | "PERSONAL";
+  contractType?: "GFB" | "HONORAR";
   qualRD?: "SAN" | "RH" | "RS" | "RA" | "NFS" | null;
   qualAusb?: "AUSBILDER" | null;
   einsatzort?: "AUSBILDUNG" | "RD" | "BEIDE" | null;
@@ -128,6 +129,7 @@ export async function POST(request: Request) {
     const firstName = normBasic(intern.firstName);
     const lastName = normBasic(intern.lastName);
     const email = normEmail(intern.email);
+    if (intern.contractType !== "GFB" && intern.contractType !== "HONORAR") return NextResponse.json({ ok: false, error: "invalid_contract_type" }, { status: 400 });
     const telefon = normBasic(intern.telefon);
     if (!firstName || !lastName) return NextResponse.json({ ok: false, error: "invalid_name" }, { status: 400 });
     if (!email) return NextResponse.json({ ok: false, error: "invalid_email" }, { status: 400 });
@@ -145,6 +147,7 @@ export async function POST(request: Request) {
         username,
         passwordHash,
         role: intern.role === "ADMIN" || intern.role === "VERWALTUNG" ? intern.role : "PERSONAL",
+        contractType: intern.contractType,
         firstName,
         lastName,
         qualRD:

@@ -36,7 +36,13 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts",
-    ".next/dev/dev/types/**/*.ts"
+    ".next/dev/dev/types/**/*.ts",
+    ".next-dev/types/**/*.ts",
+    ".next-dev/dev/types/**/*.ts",
+    ".next-ui-audit/types/**/*.ts",
+    ".next-ui-audit/dev/types/**/*.ts",
+    ".next-responsive-audit/types/**/*.ts",
+    ".next-responsive-audit/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

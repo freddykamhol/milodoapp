@@ -1,6 +1,6 @@
 import type * as React from "react";
 
-import { IconSearch } from "./icons";
+import { PageSearch } from "./page-search";
 import { MobileNav } from "./mobile-nav";
 import { NotificationsMenu } from "./notifications-menu";
 import { PageTransition } from "./page-transition";
@@ -25,18 +25,18 @@ export function AppShell({
   const viewerPromise = getViewer();
 
   return (
-    <div className="min-h-dvh px-4 py-6 sm:px-6 lg:px-10">
-      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 md:grid-cols-[260px_1fr]">
+    <div className="app-shell min-h-dvh px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-6">
         <SidebarWithViewer viewerPromise={viewerPromise} />
 
-        <div className="flex min-h-dvh flex-col gap-6">
+        <div className="flex min-h-dvh min-w-0 flex-col gap-4 lg:gap-6">
           <header className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4 shadow-[var(--shadow-soft)] sm:px-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-semibold tracking-wide text-[color:var(--muted)]">
                   {eyebrow}
                 </p>
-                <h1 className="mt-1 truncate text-xl font-semibold tracking-tight sm:text-2xl">
+                <h1 className="mt-1 break-words text-xl font-semibold tracking-tight sm:text-2xl">
                   {title}
                 </h1>
                 {subtitle ? (
@@ -46,16 +46,9 @@ export function AppShell({
                 ) : null}
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
                 <MobileNavWithViewer viewerPromise={viewerPromise} />
-                <label className="relative hidden sm:block">
-                  <span className="sr-only">Suchen</span>
-                  <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--muted)]" />
-                  <input
-                    className="h-10 w-64 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] pl-9 pr-3 text-sm outline-none ring-0 placeholder:text-[color:var(--muted)] focus:border-[color:var(--ring)] focus:bg-[var(--surface)]"
-                    placeholder="Termine, Datum, Mitglieder…"
-                  />
-                </label>
+                <PageSearchWithViewer viewerPromise={viewerPromise} />
 
                 <NotificationsMenu />
 
@@ -64,7 +57,7 @@ export function AppShell({
             </div>
           </header>
 
-          <main className="flex flex-col">
+          <main className="flex min-w-0 flex-col">
             <SessionGuard />
             <PageTransition>{children}</PageTransition>
           </main>
@@ -83,12 +76,17 @@ type Viewer = Awaited<ReturnType<typeof getViewer>>;
 
 async function SidebarWithViewer({ viewerPromise }: { viewerPromise: Promise<Viewer> }) {
   const viewer = await viewerPromise;
-  return <Sidebar role={viewer?.role ?? null} />;
+  return <Sidebar role={viewer?.role ?? null} qualAusb={viewer?.qualAusb ?? null} />;
 }
 
 async function MobileNavWithViewer({ viewerPromise }: { viewerPromise: Promise<Viewer> }) {
   const viewer = await viewerPromise;
-  return <MobileNav role={viewer?.role ?? null} />;
+  return <MobileNav role={viewer?.role ?? null} qualAusb={viewer?.qualAusb ?? null} />;
+}
+
+async function PageSearchWithViewer({ viewerPromise }: { viewerPromise: Promise<Viewer> }) {
+  const viewer = await viewerPromise;
+  return <PageSearch role={viewer?.role ?? null} qualAusb={viewer?.qualAusb ?? null} />;
 }
 
 function roleLabel(role: ViewerRole) {

@@ -1,3 +1,4 @@
+import {loadContactInquiries} from "@/lib/contact-inquiry-read-model";
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/app/(app)/_components/app-shell";
@@ -13,7 +14,7 @@ export default async function ContactAnfragenPage() {
 
   return (
     <AppShell title="Kontaktanfragen" subtitle="Website-Anfragen, Filter & Detailansicht.">
-      <ContactAnfragenClient />
+      <ContactAnfragenClient initialItems={(await loadContactInquiries(new URLSearchParams("days=30&sort=newest&unread=1&limit=200"))).items}/>
     </AppShell>
   );
 }

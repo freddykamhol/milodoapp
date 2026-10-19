@@ -1,3 +1,4 @@
+import { dateFormatter } from "@/lib/date-format";
 import { and, asc, eq, gte, gt, isNull, or, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
@@ -15,13 +16,14 @@ import { AppointmentContextMenu } from "../dashboard/_components/appointment-con
 import { AppointmentsClient, type AppointmentFeedItem } from "./_components/appointments-client";
 import { allowedAusbQuals, allowedRdQuals } from "@/lib/qual-hierarchy";
 import { getViewer } from "@/lib/viewer";
+import { serviceAreaLabel } from "@/lib/service-area-label";
 
 export const dynamic = "force-dynamic";
 
 type UserRow = typeof users.$inferSelect;
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", {
+  return dateFormatter({
     weekday: "short",
     day: "2-digit",
     month: "2-digit",
@@ -30,7 +32,7 @@ function formatDate(date: Date) {
 }
 
 function formatTime(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(date);
+  return dateFormatter({ hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 function formatTimeRange(startAt: Date, endAt: Date | null) {
@@ -124,85 +126,20 @@ async function getCounts(user: UserRow) {
   const now = new Date();
   const cutoff = new Date(now.getTime() - 15 * 60 * 1000);
 
-  const openCount = await db
-    .select({ count: sql<number>`count(*)`.as("count") })
+  const cutoff30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const eligible = eligibleWhere(user, now);
+  const rows = await db
+    .select({
+      open: sql<number>`coalesce(sum(case when (${eligible}) and ${appointmentApplications.id} is null and ${appointments.staffingStatus} <> 'BESETZT' then 1 else 0 end), 0)`.as("open"),
+      staffed: sql<number>`coalesce(sum(case when (${eligible}) and ${appointmentApplications.id} is null and ${appointments.staffingStatus} = 'BESETZT' then 1 else 0 end), 0)`.as("staffed"),
+      reported: sql<number>`coalesce(sum(case when ${appointmentApplications.userId} = ${user.id} and ${appointmentApplications.status} = 'REPORTED' and ${appointments.state} = 'OPEN' and ${appointments.startAt} >= ${cutoff.getTime()} then 1 else 0 end), 0)`.as("reported"),
+      confirmed: sql<number>`coalesce(sum(case when ${appointmentApplications.userId} = ${user.id} and ${appointmentApplications.status} = 'CONFIRMED' and ${appointments.state} = 'OPEN' and ${appointments.startAt} >= ${cutoff.getTime()} then 1 else 0 end), 0)`.as("confirmed"),
+      cancelled: sql<number>`coalesce(sum(case when ${appointments.startAt} > ${cutoff30.getTime()} and (${appointments.state} = 'CANCELLED' or ${appointmentApplications.status} = 'CANCELLED') then 1 else 0 end), 0)`.as("cancelled"),
+    })
     .from(appointments)
-    .leftJoin(
-      appointmentApplications,
-      and(
-        eq(appointmentApplications.appointmentId, appointments.id),
-        eq(appointmentApplications.userId, user.id),
-      ),
-    )
-    .where(and(eligibleWhere(user, now), isNull(appointmentApplications.id), sql`${appointments.staffingStatus} <> 'BESETZT'`))
-    .limit(1);
+    .leftJoin(appointmentApplications, and(eq(appointmentApplications.appointmentId, appointments.id), eq(appointmentApplications.userId, user.id)));
 
-  const staffedCount = await db
-    .select({ count: sql<number>`count(*)`.as("count") })
-    .from(appointments)
-    .leftJoin(
-      appointmentApplications,
-      and(
-        eq(appointmentApplications.appointmentId, appointments.id),
-        eq(appointmentApplications.userId, user.id),
-      ),
-    )
-    .where(and(eligibleWhere(user, now), isNull(appointmentApplications.id), eq(appointments.staffingStatus, "BESETZT")))
-    .limit(1);
-
-  const reportedCount = await db
-    .select({ count: sql<number>`count(*)`.as("count") })
-    .from(appointmentApplications)
-    .innerJoin(appointments, eq(appointmentApplications.appointmentId, appointments.id))
-    .where(
-      and(
-        eq(appointmentApplications.userId, user.id),
-        eq(appointmentApplications.status, "REPORTED"),
-        eq(appointments.state, "OPEN"),
-        gte(appointments.startAt, cutoff),
-      ),
-    )
-    .limit(1);
-
-  const confirmedCount = await db
-    .select({ count: sql<number>`count(*)`.as("count") })
-    .from(appointmentApplications)
-    .innerJoin(appointments, eq(appointmentApplications.appointmentId, appointments.id))
-    .where(
-      and(
-        eq(appointmentApplications.userId, user.id),
-        eq(appointmentApplications.status, "CONFIRMED"),
-        eq(appointments.state, "OPEN"),
-        gte(appointments.startAt, cutoff),
-      ),
-    )
-    .limit(1);
-
-  const cancelledCount = await db
-    .select({ count: sql<number>`count(*)`.as("count") })
-    .from(appointments)
-    .leftJoin(
-      appointmentApplications,
-      and(
-        eq(appointmentApplications.appointmentId, appointments.id),
-        eq(appointmentApplications.userId, user.id),
-      ),
-    )
-    .where(
-      and(
-        gt(appointments.startAt, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
-        or(eq(appointments.state, "CANCELLED"), eq(appointmentApplications.status, "CANCELLED")),
-      ),
-    )
-    .limit(1);
-
-  return {
-    open: openCount.at(0)?.count ?? 0,
-    staffed: staffedCount.at(0)?.count ?? 0,
-    reported: reportedCount.at(0)?.count ?? 0,
-    confirmed: confirmedCount.at(0)?.count ?? 0,
-    cancelled: cancelledCount.at(0)?.count ?? 0,
-  };
+  return rows[0] ?? { open: 0, staffed: 0, reported: 0, confirmed: 0, cancelled: 0 };
 }
 
 async function getInitialOpenItems(user: UserRow) {
@@ -294,7 +231,7 @@ export default async function AppointmentsPage() {
               </p>
               <p className="mt-1 text-[11px] font-medium text-[color:var(--muted)]">
                 {nextAssigned.dienstart ? `${nextAssigned.dienstart} • ` : ""}
-                {nextAssigned.bereich}
+                {serviceAreaLabel(nextAssigned.bereich)}
               </p>
             </div>
 

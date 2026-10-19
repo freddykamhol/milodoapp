@@ -1,0 +1,6 @@
+import {courseRoute} from '@/lib/course-route';
+import {loadCourse,CourseError} from '@/lib/courses';
+import {courseType} from '@/lib/course-types';
+import {buildParticipantList,buildCourseCertificates} from '@/lib/course-pdf';
+export const runtime='nodejs';
+export const GET=courseRoute(async(request,{row},viewer)=>{const type=new URL(request.url).searchParams.get('type');if(type!=='participants'&&type!=='certificates')throw new CourseError('Ungültiger Export.');const data=await loadCourse(row.id,viewer);if(type==='certificates'&&(!courseType(data.courseType)||!data.approved||data.state==='CANCELLED'||!data.participants.some(person=>person.present)))throw new CourseError('Bescheinigungen sind nur für anwesende Teilnehmer eines freigegebenen, nicht abgesagten Kurses verfügbar.',409);const bytes=type==='participants'?await buildParticipantList(data):await buildCourseCertificates(data);return new Response(bytes,{headers:{'content-type':type==='participants'?'application/pdf':'application/zip','content-disposition':`attachment; filename="Kurs-${row.id}-${type==='participants'?'Teilnehmerliste.pdf':'Bescheinigungen.zip'}"`,'cache-control':'no-store','x-content-type-options':'nosniff'}});},'operate');

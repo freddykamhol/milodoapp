@@ -1,5 +1,6 @@
 "use client";
 
+import { notify } from "@/app/_components/feedback";
 import * as React from "react";
 import Link from "next/link";
 
@@ -13,7 +14,7 @@ export default function ForgotPasswordPage() {
   const [busy, setBusy] = React.useState(false);
 
   async function submit() {
-    if (!email.trim()) return window.alert("E-Mail fehlt.");
+    if (!email.trim()) return notify("E-Mail fehlt.");
     setBusy(true);
     try {
       await fetch("/api/auth/password-reset/request", {
@@ -21,7 +22,7 @@ export default function ForgotPasswordPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      window.alert("Wenn die E-Mail existiert, wurde ein Reset-Link versendet.");
+      notify("Wenn die E-Mail existiert, wurde ein Reset-Link versendet.");
       setEmail("");
     } finally {
       setBusy(false);

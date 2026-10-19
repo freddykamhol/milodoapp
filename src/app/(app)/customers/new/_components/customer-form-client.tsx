@@ -1,5 +1,7 @@
 "use client";
 
+import { notify, confirmAction } from "@/app/_components/feedback";
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
@@ -45,7 +47,7 @@ export function CustomerFormClient({
   }
 
   async function submit() {
-    if (!draft.name.trim()) return window.alert("Firma fehlt.");
+    if (!draft.name.trim()) return notify("Firma fehlt.");
     setBusy(true);
     try {
       const url = mode === "create" ? "/api/customers" : `/api/customers/${customerId}`;
@@ -57,12 +59,12 @@ export function CustomerFormClient({
       });
       const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; id?: number } | null;
       if (!res.ok || !json?.ok) throw new Error(json?.error || "save_failed");
-      window.alert("Gespeichert.");
+      notify("Gespeichert.");
       router.push("/customers");
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Speichern fehlgeschlagen.";
-      window.alert(msg);
+      notify(msg);
     } finally {
       setBusy(false);
     }
@@ -70,7 +72,7 @@ export function CustomerFormClient({
 
   async function remove() {
     if (!customerId) return;
-    const ok = window.confirm("Kunde wirklich löschen?");
+    const ok = (await confirmAction("Kunde wirklich löschen?"));
     if (!ok) return;
     setBusy(true);
     try {
@@ -81,7 +83,7 @@ export function CustomerFormClient({
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Löschen fehlgeschlagen.";
-      window.alert(msg);
+      notify(msg);
     } finally {
       setBusy(false);
     }
@@ -106,7 +108,7 @@ export function CustomerFormClient({
 
         <label className="block">
           <span className="text-xs font-semibold text-[color:var(--muted)]">Hauptbereich</span>
-          <select
+          <AppSelect
             className={inputClass}
             value={draft.mainBereich}
             onChange={(e) => setDraft((v) => ({ ...v, mainBereich: e.target.value as typeof v.mainBereich }))}
@@ -114,7 +116,7 @@ export function CustomerFormClient({
             <option value="RD_BOERSE">Rettungsdienst</option>
             <option value="SANITATSDIENST">Sanitätsdienst</option>
             <option value="ERSTE_HILFE">Erste Hilfe</option>
-          </select>
+          </AppSelect>
         </label>
         <div />
 
@@ -145,14 +147,14 @@ export function CustomerFormClient({
         <label className="block">
           <span className="text-xs font-semibold text-[color:var(--muted)]">Ort</span>
           {cityOptions.length > 1 ? (
-            <select className={inputClass} value={draft.city} onChange={(e) => setDraft((v) => ({ ...v, city: e.target.value }))}>
+            <AppSelect className={inputClass} value={draft.city} onChange={(e) => setDraft((v) => ({ ...v, city: e.target.value }))}>
               <option value="">Bitte wählen…</option>
               {cityOptions.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           ) : (
             <input className={inputClass} value={draft.city} onChange={(e) => setDraft((v) => ({ ...v, city: e.target.value }))} />
           )}
@@ -166,8 +168,8 @@ export function CustomerFormClient({
           <label className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 md:col-span-2">
             <input
               type="checkbox"
-              checked={Boolean((draft as any).createAccount)}
-              onChange={(e) => setDraft((v) => ({ ...(v as any), createAccount: e.target.checked }))}
+              checked={Boolean(draft.createAccount)}
+              onChange={(e) => setDraft((v) => ({ ...v, createAccount: e.target.checked }))}
             />
             <div className="min-w-0">
               <p className="text-sm font-semibold">Kundenaccount erstellen</p>

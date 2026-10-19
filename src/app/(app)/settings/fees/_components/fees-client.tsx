@@ -1,5 +1,6 @@
 "use client";
 
+import { notify } from "@/app/_components/feedback";
 import * as React from "react";
 
 import { Badge, Card } from "../../../_components/ui";
@@ -70,7 +71,7 @@ export function FeesClient({
       });
       if (!res.ok) throw new Error("save_failed");
     } catch {
-      window.alert("Speichern fehlgeschlagen.");
+      notify("Speichern fehlgeschlagen.");
     } finally {
       setSaving(null);
     }
@@ -95,8 +96,8 @@ export function FeesClient({
             </div>
 
             <div className="mt-3 overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
-              <div className="min-w-[620px]">
-                <div className="grid grid-cols-[1fr_220px_140px] gap-3 bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[color:var(--muted)]">
+              <div className="min-w-0">
+                <div className="hidden grid-cols-[minmax(0,1fr)_180px_110px] gap-3 bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[color:var(--muted)] xl:grid">
                   <div>Qualifikation</div>
                   <div>Stundensatz</div>
                   <div className="text-right">Aktion</div>
@@ -109,7 +110,7 @@ export function FeesClient({
                     const cents = euroInputToCents(raw);
                     const preview = cents == null ? "—" : `${centsToEuro(cents)} € / h`;
                     return (
-                      <li key={key} className="grid grid-cols-[1fr_220px_140px] items-center gap-3 px-4 py-3">
+                      <li key={key} className="grid grid-cols-1 items-center gap-3 px-4 py-3 xl:grid-cols-[minmax(0,1fr)_180px_110px]">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold">{qual}</p>
                           <p className="mt-1 text-xs text-[color:var(--muted)]">{preview}</p>

@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       .onConflictDoNothing();
 
     const row = await db.query.blogMedia.findFirst({ where: (t, { eq }) => eq(t.storageKey, stored.storageKey) });
-    if (row) inserted.push({ ...(row as any), url: `/api/blog/assets/raw?key=${encodeURIComponent(row.storageKey)}` });
+    if (row) inserted.push({ ...row, url: `/api/blog/assets/raw?key=${encodeURIComponent(row.storageKey)}` });
   }
 
   return NextResponse.json({ ok: true, rows: inserted });

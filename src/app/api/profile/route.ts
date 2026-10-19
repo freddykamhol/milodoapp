@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users } from "@/db/schema";
 import { getViewer } from "@/lib/viewer";
+import { inquiryServiceTypes } from "@/lib/inquiry-service-types";
 
 export const runtime = "nodejs";
 
@@ -35,6 +36,12 @@ export async function PATCH(request: Request) {
   if ("publicQualifications" in body) next.publicQualifications = asBool(body.publicQualifications);
   if ("publicAddress" in body) next.publicAddress = asBool(body.publicAddress);
   if ("publicContact" in body) next.publicContact = asBool(body.publicContact);
+  if ("inquiryServiceTypes" in body) {
+    if (!Array.isArray(body.inquiryServiceTypes) || body.inquiryServiceTypes.some((item) => !inquiryServiceTypes.some((option) => option.value === item))) {
+      return NextResponse.json({ ok: false, error: "invalid_inquiry_service_types" }, { status: 400 });
+    }
+    next.inquiryServiceTypes = JSON.stringify([...new Set(body.inquiryServiceTypes as string[])]);
+  }
 
   if ("geb" in body) {
     const iso = norm(body.geb);

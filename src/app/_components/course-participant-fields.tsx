@@ -1,0 +1,5 @@
+"use client";
+import * as React from 'react';
+export type ParticipantInput={firstName:string;lastName:string;dateOfBirth:string};
+export const emptyParticipant:ParticipantInput={firstName:'',lastName:'',dateOfBirth:''};
+export function CourseParticipantFields({value,onChange}:{value:ParticipantInput;onChange:(value:ParticipantInput)=>void}){const id=React.useId();return <div className="grid min-w-0 gap-3 sm:grid-cols-3">{[{key:'firstName',label:'Vorname',auto:'given-name'},{key:'lastName',label:'Nachname',auto:'family-name'},{key:'dateOfBirth',label:'Geburtsdatum',auto:'bday'}].map(field=><label key={field.key} htmlFor={id+field.key} className="min-w-0 text-xs font-semibold">{field.label}<input id={id+field.key} required maxLength={field.key==='dateOfBirth'?undefined:100} type={field.key==='dateOfBirth'?'date':'text'} autoComplete={field.auto} className="ui-input mt-2 text-sm" value={value[field.key as keyof ParticipantInput]} onChange={event=>onChange({...value,[field.key]:event.target.value})}/></label>)}</div>;}

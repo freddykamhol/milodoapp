@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     .insert(blogAssets)
     .values({
       postId: post.id,
-      kind: kind as any,
+      kind,
       fileName: stored.storedName,
       mimeType: stored.mimeType,
       storageKey: stored.storageKey,

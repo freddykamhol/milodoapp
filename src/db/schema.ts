@@ -1,7 +1,38 @@
 import { relations, sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { blob, check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const epochMsNow = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
+export const courseMaterials=sqliteTable('course_materials',{id:integer('id').primaryKey({autoIncrement:true}),appointmentId:integer('appointment_id').notNull().references(()=>appointments.id,{onDelete:'cascade'}),itemId:integer('item_id').references(()=>inventoryItems.id,{onDelete:'set null'}),name:text('name').notNull(),inventoryNumber:text('inventory_number').notNull(),quantity:integer('quantity').notNull()},t=>[uniqueIndex('course_materials_item_idx').on(t.appointmentId,t.itemId)]);
+
+export const courseParticipants=sqliteTable('course_participants',{
+ id:integer('id').primaryKey({autoIncrement:true}),appointmentId:integer('appointment_id').notNull().references(()=>appointments.id,{onDelete:'cascade'}),
+ firstName:text('first_name').notNull(),lastName:text('last_name').notNull(),dateOfBirth:text('date_of_birth').notNull(),identityKey:text('identity_key').notNull(),
+ present:integer('present',{mode:'boolean'}).notNull().default(false),source:text('source',{enum:['INTERNAL','EXTERNAL']}).notNull().default('INTERNAL'),
+ createdAt:integer('created_at',{mode:'timestamp_ms'}).notNull(),updatedAt:integer('updated_at',{mode:'timestamp_ms'}).notNull(),updatedById:integer('updated_by_id').references(()=>users.id,{onDelete:'set null'}),
+},t=>[uniqueIndex('course_participants_identity_idx').on(t.appointmentId,t.identityKey),index('course_participants_appointment_idx').on(t.appointmentId,t.lastName,t.firstName)]);
+
+export const defectAppointments = sqliteTable("defect_appointments", {
+ id:integer("id").primaryKey({autoIncrement:true}),createdAt:integer("created_at",{mode:"timestamp_ms"}).notNull(),updatedAt:integer("updated_at",{mode:"timestamp_ms"}).notNull(),
+ vehicleDefectId:integer("vehicle_defect_id").references(()=>vehicleDefects.id,{onDelete:"cascade"}),inventoryDefectId:integer("inventory_defect_id").references(()=>inventoryDefects.id,{onDelete:"cascade"}),
+ companyId:integer("company_id").references(()=>vehicleServiceCompanies.id,{onDelete:"set null"}),companyName:text("company_name").notNull().default(""),
+ title:text("title").notNull(),description:text("description").notNull().default(""),location:text("location").notNull().default(""),
+ startAt:integer("start_at",{mode:"timestamp_ms"}).notNull(),endAt:integer("end_at",{mode:"timestamp_ms"}),createdById:integer("created_by_id").references(()=>users.id,{onDelete:"set null"}),
+},t=>[index("defect_appointments_vehicle_defect_idx").on(t.vehicleDefectId,t.startAt),index("defect_appointments_inventory_defect_idx").on(t.inventoryDefectId,t.startAt),index("defect_appointments_start_idx").on(t.startAt),check("defect_appointments_single_defect",sql`(${t.vehicleDefectId} is not null and ${t.inventoryDefectId} is null) or (${t.vehicleDefectId} is null and ${t.inventoryDefectId} is not null)`),check("defect_appointments_end_after_start",sql`${t.endAt} is null or ${t.endAt} > ${t.startAt}`)]);
+
+export const messageJobs = sqliteTable("message_jobs", {
+ id:integer("id").primaryKey({autoIncrement:true}), createdAt:integer("created_at",{mode:"timestamp_ms"}).notNull(),
+ createdById:integer("created_by_id").notNull().references(()=>users.id,{onDelete:"restrict"}), clientToken:text("client_token").notNull(),
+ subject:text("subject").notNull(), body:text("body").notNull(), selectionJson:text("selection_json").notNull(),
+ scheduledAt:integer("scheduled_at",{mode:"timestamp_ms"}).notNull(), status:text("status").notNull().default("QUEUED"),
+},t=>[uniqueIndex("message_jobs_sender_token_idx").on(t.createdById,t.clientToken),index("message_jobs_due_idx").on(t.status,t.scheduledAt)]);
+export const messageDeliveries = sqliteTable("message_deliveries", {
+ id:integer("id").primaryKey({autoIncrement:true}),jobId:integer("job_id").notNull().references(()=>messageJobs.id,{onDelete:"cascade"}),
+ email:text("email").notNull(),status:text("status").notNull().default("PENDING"),claimedAt:integer("claimed_at",{mode:"timestamp_ms"}),claimToken:text("claim_token"),sentAt:integer("sent_at",{mode:"timestamp_ms"}),error:text("error"),
+},t=>[uniqueIndex("message_deliveries_job_email_idx").on(t.jobId,t.email),index("message_deliveries_job_status_idx").on(t.jobId,t.status)]);
+export const messageAttachments = sqliteTable("message_attachments", {
+ id:integer("id").primaryKey({autoIncrement:true}),jobId:integer("job_id").notNull().references(()=>messageJobs.id,{onDelete:"cascade"}),
+ name:text("name").notNull(),mimeType:text("mime_type").notNull(),sizeBytes:integer("size_bytes").notNull(),content:blob("content",{mode:"buffer"}).notNull(),
+},t=>[index("message_attachments_job_idx").on(t.jobId)]);
 
 export const users = sqliteTable(
   "users",
@@ -16,6 +47,7 @@ export const users = sqliteTable(
     role: text("role", {
       enum: ["ADMIN", "VERWALTUNG", "PERSONAL", "KUNDE"],
     }).notNull(),
+    contractType: text("contract_type", { enum: ["GFB", "HONORAR"] }),
 
     firstName: text("first_name").notNull().default(""),
     lastName: text("last_name").notNull().default(""),
@@ -51,6 +83,7 @@ export const users = sqliteTable(
     publicQualifications: integer("public_qualifications", { mode: "boolean" }).notNull().default(true),
     publicAddress: integer("public_address", { mode: "boolean" }).notNull().default(false),
     publicContact: integer("public_contact", { mode: "boolean" }).notNull().default(false),
+    inquiryServiceTypes: text("inquiry_service_types"),
 
     // Optional per-user overrides for qualification-based hourly rates (cents per hour).
     // If set, these override the rates configured under Settings → Fees.
@@ -66,6 +99,221 @@ export const users = sqliteTable(
   ],
 );
 
+export const vehicles = sqliteTable(
+  "vehicles",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    licensePlate: text("license_plate").notNull(),
+    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    type: text("type", { enum: ["PKW", "MTW", "KTW", "RTW", "S-KTW-S-RTW", "ITW", "NEF", "LKW", "SONSTIGE"] }).notNull(),
+    initialMileage: integer("initial_mileage").notNull().default(0),
+    mileage: integer("mileage").notNull().default(0),
+    location: text("location").notNull().default(""),
+    tuvLastAt: integer("tuv_last_at", { mode: "timestamp_ms" }),
+    notes: text("notes").notNull().default(""),
+  },
+  (table) => [uniqueIndex("vehicles_license_plate_unique").on(table.licensePlate)],
+);
+
+export const vehicleDefects = sqliteTable(
+  "vehicle_defects",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    category: text("category", { enum: ["ELEKTRIK", "AUFBAU", "FAHRGESTELL", "MOTOR_GETRIEBE"] }).notNull(),
+    status: text("status", { enum: ["ERSTELLT", "IN_BEARBEITUNG", "BEHOBEN"] }).notNull().default("ERSTELLT"),
+    mileage: integer("mileage").notNull().default(0),
+    imageUrls: text("image_urls").notNull().default("[]"),
+    reportedById: integer("reported_by_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => [index("vehicle_defects_vehicle_id_idx").on(table.vehicleId), index("vehicle_defects_status_idx").on(table.status), index("vehicle_defects_created_idx").on(table.createdAt)],
+);
+
+export const vehicleTrips = sqliteTable(
+  "vehicle_trips",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "restrict" }),
+    title: text("title").notNull(),
+    kmStart: integer("km_start").notNull(),
+    kmEnd: integer("km_end").notNull(),
+    startAt: integer("start_at", { mode: "timestamp_ms" }).notNull(),
+    endAt: integer("end_at", { mode: "timestamp_ms" }).notNull(),
+    appointmentId: integer("appointment_id").references(() => appointments.id, { onDelete: "set null" }),
+    createdById: integer("created_by_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => [index("vehicle_trips_vehicle_id_idx").on(table.vehicleId), index("vehicle_trips_start_at_idx").on(table.startAt), index("vehicle_trips_vehicle_start_idx").on(table.vehicleId, table.startAt)],
+);
+
+export const vehicleMaintenances = sqliteTable(
+  "vehicle_maintenances",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    lastAt: integer("last_at", { mode: "timestamp_ms" }).notNull(),
+    intervalDays: integer("interval_days").notNull().default(0),
+    nextAt: integer("next_at", { mode: "timestamp_ms" }).notNull(),
+    confirmedAt: integer("confirmed_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [index("vehicle_maintenances_vehicle_id_idx").on(table.vehicleId)],
+);
+
+export const vehicleServiceCompanies = sqliteTable(
+  "vehicle_service_companies",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    name: text("name").notNull(),
+    address: text("address").notNull().default(""),
+    street: text("street").notNull().default(""),
+    postalCode: text("postal_code").notNull().default(""),
+    city: text("city").notNull().default(""),
+    phone: text("phone").notNull().default(""),
+    email: text("email").notNull().default(""),
+    contactPerson: text("contact_person").notNull().default(""),
+  },
+  (table) => [uniqueIndex("vehicle_service_companies_name_unique").on(table.name)],
+);
+
+export const vehicleMaintenanceAppointments = sqliteTable(
+  "vehicle_maintenance_appointments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
+    maintenanceId: integer("maintenance_id").references(() => vehicleMaintenances.id, { onDelete: "cascade" }),
+    companyId: integer("company_id").references(() => vehicleServiceCompanies.id, { onDelete: "set null" }),
+    companyName: text("company_name").notNull(),
+    address: text("address").notNull().default(""),
+    title: text("title").notNull(),
+    startAt: integer("start_at", { mode: "timestamp_ms" }).notNull(),
+    endAt: integer("end_at", { mode: "timestamp_ms" }),
+    createdById: integer("created_by_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => [index("vehicle_maintenance_appointments_start_at_idx").on(table.startAt), index("vehicle_maintenance_appointments_vehicle_id_idx").on(table.vehicleId)],
+);
+
+export const inventoryItems = sqliteTable(
+  "inventory_items",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    inventoryNumber: text("inventory_number"),
+    name: text("name").notNull(),
+    category: text("category", { enum: ["MEDICAL_DEVICE", "CONSUMABLE", "BAG", "OXYGEN", "OTHER"] }).notNull(),
+    status: text("status", { enum: ["ACTIVE", "OUT_OF_SERVICE", "RETIRED"] }).notNull().default("ACTIVE"),
+    quantity: integer("quantity").notNull().default(0),
+    minimumQuantity: integer("minimum_quantity").notNull().default(0),
+    unit: text("unit").notNull().default("Stück"),
+    location: text("location").notNull().default(""),
+    manufacturer: text("manufacturer").notNull().default(""),
+    model: text("model").notNull().default(""),
+    serialNumber: text("serial_number").notNull().default(""),
+    lotNumber: text("lot_number").notNull().default(""),
+    expiryAt: integer("expiry_at", { mode: "timestamp_ms" }),
+    inspectionIntervalDays: integer("inspection_interval_days").notNull().default(0),
+    lastInspectionAt: integer("last_inspection_at", { mode: "timestamp_ms" }),
+    nextInspectionAt: integer("next_inspection_at", { mode: "timestamp_ms" }),
+    medicalDeviceClass: text("medical_device_class").notNull().default(""),
+    udi: text("udi").notNull().default(""),
+    commissionedAt: integer("commissioned_at", { mode: "timestamp_ms" }),
+    oxygenCapacityLiters: integer("oxygen_capacity_liters"),
+    oxygenPressureBar: integer("oxygen_pressure_bar"),
+    oxygenContentPercent: integer("oxygen_content_percent"),
+    notes: text("notes").notNull().default(""),
+  },
+  (table) => [
+    uniqueIndex("inventory_items_inventory_number_unique").on(table.inventoryNumber),
+    index("inventory_items_category_idx").on(table.category), index("inventory_items_name_idx").on(table.name),
+    index("inventory_items_status_idx").on(table.status),
+    index("inventory_items_expiry_idx").on(table.expiryAt),
+    index("inventory_items_inspection_idx").on(table.nextInspectionAt),
+  ],
+);
+
+export const inventoryMovements = sqliteTable(
+  "inventory_movements",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    itemId: integer("item_id").notNull().references(() => inventoryItems.id, { onDelete: "cascade" }),
+    movementType: text("movement_type", { enum: ["IN", "OUT", "ADJUST"] }).notNull(),
+    quantityChange: integer("quantity_change").notNull(),
+    quantityAfter: integer("quantity_after").notNull(),
+    reason: text("reason").notNull(),
+    reference: text("reference").notNull().default(""),
+    actorId: integer("actor_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => [index("inventory_movements_item_id_idx").on(table.itemId), index("inventory_movements_item_created_idx").on(table.itemId, table.createdAt), index("inventory_movements_created_at_idx").on(table.createdAt)],
+);
+
+export const inventoryInspections = sqliteTable(
+  "inventory_inspections",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    itemId: integer("item_id").notNull().references(() => inventoryItems.id, { onDelete: "cascade" }),
+    result: text("result", { enum: ["PASSED", "FAILED", "REPAIR_REQUIRED"] }).notNull(),
+    performedAt: integer("performed_at", { mode: "timestamp_ms" }).notNull(),
+    nextDueAt: integer("next_due_at", { mode: "timestamp_ms" }),
+    notes: text("notes").notNull().default(""),
+    performedById: integer("performed_by_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => [index("inventory_inspections_item_id_idx").on(table.itemId), index("inventory_inspections_item_performed_idx").on(table.itemId, table.performedAt), index("inventory_inspections_performed_at_idx").on(table.performedAt)],
+);
+
+export const inventoryDefects = sqliteTable(
+  "inventory_defects",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    itemId: integer("item_id").notNull().references(() => inventoryItems.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    imageUrls: text("image_urls").notNull().default("[]"),
+    status: text("status", { enum: ["ERSTELLT", "IN_BEARBEITUNG", "BEHOBEN"] }).notNull().default("ERSTELLT"),
+    reportedById: integer("reported_by_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => [index("inventory_defects_item_id_idx").on(table.itemId), index("inventory_defects_status_idx").on(table.status), index("inventory_defects_created_idx").on(table.createdAt)],
+);
+
+export const appointmentVehicles = sqliteTable(
+  "appointment_vehicles",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    appointmentId: integer("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }),
+    vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "restrict" }),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (table) => [uniqueIndex("appointment_vehicles_unique").on(table.appointmentId, table.vehicleId), index("appointment_vehicles_appointment_id_idx").on(table.appointmentId), index("appointment_vehicles_vehicle_appointment_idx").on(table.vehicleId, table.appointmentId)],
+);
+
+export const appointmentVehicleMembers = sqliteTable(
+  "appointment_vehicle_members",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    appointmentVehicleId: integer("appointment_vehicle_id").notNull().references(() => appointmentVehicles.id, { onDelete: "cascade" }),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => [uniqueIndex("appointment_vehicle_members_unique").on(table.appointmentVehicleId, table.userId), index("appointment_vehicle_members_vehicle_idx").on(table.appointmentVehicleId)],
+);
+
 export const documents = sqliteTable(
   "documents",
   {
@@ -79,8 +327,15 @@ export const documents = sqliteTable(
 
     title: text("title").notNull(),
     category: text("category", {
-      enum: ["CV", "TRAINING", "CONTRACT"],
+      enum: ["CV", "TRAINING", "DRIVER_LICENSE", "QUALIFICATION", "CONTRACT"],
     }),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+    expiryReminderSentAt: integer("expiry_reminder_sent_at", { mode: "timestamp_ms" }),
+    expiredReminderSentAt: integer("expired_reminder_sent_at", { mode: "timestamp_ms" }),
+    ownerExpiryReminderSentAt: integer("owner_expiry_reminder_sent_at", { mode: "timestamp_ms" }),
+    ownerExpiredReminderSentAt: integer("owner_expired_reminder_sent_at", { mode: "timestamp_ms" }),
+    requestedExpiresAt: integer("requested_expires_at", { mode: "timestamp_ms" }),
+    expiryApprovalStatus: text("expiry_approval_status", { enum: ["NONE", "PENDING", "APPROVED"] }).notNull().default("NONE"),
     fileName: text("file_name").notNull(),
     mimeType: text("mime_type"),
     storageKey: text("storage_key").notNull(),
@@ -88,7 +343,7 @@ export const documents = sqliteTable(
   },
   (table) => [
     uniqueIndex("documents_storage_key_unique").on(table.storageKey),
-    index("documents_owner_id_idx").on(table.ownerId),
+    index("documents_owner_id_idx").on(table.ownerId), index("documents_owner_created_idx").on(table.ownerId, table.createdAt),
     index("documents_owner_category_idx").on(table.ownerId, table.category),
   ],
 );
@@ -100,6 +355,45 @@ export const usersRelations = relations(users, ({ many }) => ({
 export const documentsRelations = relations(documents, ({ one }) => ({
   owner: one(users, { fields: [documents.ownerId], references: [users.id] }),
 }));
+
+export const documentExpirySettings = sqliteTable(
+  "document_expiry_settings",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    category: text("category", {
+      enum: ["TRAINING", "DRIVER_LICENSE", "QUALIFICATION"],
+    }).notNull(),
+    expiryMonths: integer("expiry_months").notNull().default(0),
+    reminderDaysBefore: integer("reminder_days_before").notNull().default(0),
+  },
+  (table) => [uniqueIndex("document_expiry_settings_category_unique").on(table.category)],
+);
+
+export const documentExpiryPreferences = sqliteTable("document_expiry_preferences", {
+  id: integer("id").primaryKey(),
+  manualExpiryRequiresApproval: integer("manual_expiry_requires_approval", { mode: "boolean" }).notNull().default(false),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+});
+
+export const documentExpiryRecipients = sqliteTable(
+  "document_expiry_recipients",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    category: text("category", { enum: ["TRAINING", "DRIVER_LICENSE", "QUALIFICATION"] }).notNull(),
+    recipientType: text("recipient_type", { enum: ["ROLE", "USER", "EMAIL"] }).notNull(),
+    role: text("role", { enum: ["ADMIN", "VERWALTUNG", "PERSONAL", "KUNDE"] }),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+    email: text("email"),
+    originCategory: text("origin_category", { enum: ["TRAINING", "DRIVER_LICENSE", "QUALIFICATION"] }),
+  },
+  (table) => [
+    index("document_expiry_recipients_category_idx").on(table.category),
+    uniqueIndex("document_expiry_recipients_unique").on(table.category, table.recipientType, table.role, table.userId, table.email),
+  ],
+);
 
 export const memberRegistrationForms = sqliteTable(
   "member_registration_forms",
@@ -208,7 +502,7 @@ export const customers = sqliteTable(
 
     accountUserId: integer("account_user_id").references(() => users.id, { onDelete: "set null" }),
   },
-  (table) => [uniqueIndex("customers_name_unique").on(table.name)],
+  (table) => [uniqueIndex("customers_name_unique").on(table.name), index("customers_account_user_idx").on(table.accountUserId)],
 );
 
 export const appointments = sqliteTable(
@@ -237,6 +531,10 @@ export const appointments = sqliteTable(
     }),
 
     eventName: text("event_name").notNull().default(""),
+    courseType:text('course_type'),
+    courseParticipantLimit:integer('course_participant_limit'),
+    courseRegistrationHash:text('course_registration_hash'),
+    courseRegistrationExpiresAt:integer('course_registration_expires_at',{mode:'timestamp_ms'}),
     notes: text("notes").notNull().default(""),
     detailsJson: text("details_json").notNull().default("{}"),
 
@@ -260,7 +558,8 @@ export const appointments = sqliteTable(
       .default("OPEN"),
   },
   (table) => [
-    index("appointments_start_at_idx").on(table.startAt),
+    index("appointments_start_at_idx").on(table.startAt), index("appointments_state_start_idx").on(table.state, table.startAt), index("appointments_customer_state_start_idx").on(table.customerId, table.state, table.startAt),
+    uniqueIndex('appointments_course_registration_idx').on(table.courseRegistrationHash),
     index("appointments_state_idx").on(table.state),
     index("appointments_staffing_status_idx").on(table.staffingStatus),
     index("appointments_target_user_id_idx").on(table.targetUserId),
@@ -268,6 +567,19 @@ export const appointments = sqliteTable(
     index("appointments_bereich_idx").on(table.bereich),
     index("appointments_dienstart_idx").on(table.dienstart),
   ],
+);
+
+export const courseRegistrationLinks = sqliteTable(
+  "course_registration_links",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    appointmentId: integer("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [uniqueIndex("course_registration_links_token_idx").on(table.tokenHash), index("course_registration_links_appointment_idx").on(table.appointmentId)],
 );
 
 export const appointmentRequirements = sqliteTable(
@@ -324,7 +636,7 @@ export const appointmentApplications = sqliteTable(
     ),
     index("appointment_applications_user_id_idx").on(table.userId),
     index("appointment_applications_appointment_id_idx").on(table.appointmentId),
-    index("appointment_applications_status_idx").on(table.status),
+    index("appointment_applications_status_idx").on(table.status), index("appointment_applications_user_status_appointment_idx").on(table.userId, table.status, table.appointmentId), index("appointment_applications_appointment_status_idx").on(table.appointmentId, table.status),
   ],
 );
 
@@ -675,7 +987,7 @@ export const notifications = sqliteTable(
   },
   (table) => [
     index("notifications_created_at_idx").on(table.createdAt),
-    index("notifications_scope_idx").on(table.scope),
+    index("notifications_scope_idx").on(table.scope), index("notifications_scope_user_created_idx").on(table.scope, table.userId, table.createdAt),
     index("notifications_user_id_idx").on(table.userId),
   ],
 );
@@ -700,6 +1012,41 @@ export const notificationReads = sqliteTable(
     index("notification_reads_notification_id_idx").on(table.notificationId),
   ],
 );
+
+export const calendarCategoryColors = sqliteTable("calendar_category_colors", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  category: text("category").notNull(),
+  color: text("color").notNull().default("#0878F9"),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+}, (table) => [uniqueIndex("calendar_category_colors_category_unique").on(table.category)]);
+
+export const rolePermissions = sqliteTable("role_permissions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  role: text("role", { enum: ["ADMIN", "VERWALTUNG", "PERSONAL", "KUNDE"] }).notNull(),
+  permission: text("permission").notNull(),
+  canView: integer("can_view", { mode: "boolean" }).notNull().default(false),
+  canManage: integer("can_manage", { mode: "boolean" }).notNull().default(false),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+}, (table) => [uniqueIndex("role_permissions_role_permission_unique").on(table.role, table.permission)]);
+
+export const responsibilityAssignments = sqliteTable("responsibility_assignments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  type: text("type", { enum: ["VEHICLE", "MATERIAL"] }).notNull(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  address: text("address").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+}, (table) => [uniqueIndex("responsibility_assignments_type_user_unique").on(table.type, table.userId), index("responsibility_assignments_type_idx").on(table.type)]);
+
+export const responsibilityRecipients = sqliteTable("responsibility_recipients", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  type: text("type", { enum: ["VEHICLE", "MATERIAL"] }).notNull(),
+  recipientType: text("recipient_type", { enum: ["ROLE", "USER", "EMAIL"] }).notNull(),
+  role: text("role", { enum: ["ADMIN", "VERWALTUNG", "PERSONAL", "KUNDE"] }),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+  email: text("email"),
+  location: text("location").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+}, (table) => [uniqueIndex("responsibility_recipients_unique").on(table.type, table.recipientType, table.role, table.userId, table.email)]);
 
 export const prowlKeysRelations = relations(prowlKeys, ({ one }) => ({
   user: one(users, { fields: [prowlKeys.userId], references: [users.id] }),
@@ -993,9 +1340,27 @@ export const contactInquiries = sqliteTable(
   (table) => [
     index("contact_inquiries_created_at_idx").on(table.createdAt),
     index("contact_inquiries_read_at_idx").on(table.readAt),
-    index("contact_inquiries_deleted_at_idx").on(table.deletedAt),
+    index("contact_inquiries_deleted_at_idx").on(table.deletedAt), index("contact_inquiries_deleted_created_idx").on(table.deletedAt, table.createdAt),
     index("contact_inquiries_status_idx").on(table.status),
     index("contact_inquiries_email_idx").on(table.email),
+  ],
+);
+
+export const contactInquiryRecipients = sqliteTable(
+  "contact_inquiry_recipients",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(epochMsNow),
+    mode: text("mode", { enum: ["eh", "notfall", "sanitaet", "boerse", "kontakt"] }).notNull(),
+    originMode: text("origin_mode", { enum: ["eh", "notfall", "sanitaet", "boerse", "kontakt"] }),
+    recipientType: text("recipient_type", { enum: ["ROLE", "USER", "EMAIL"] }).notNull(),
+    role: text("role", { enum: ["ADMIN", "VERWALTUNG", "PERSONAL", "KUNDE"] }),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+    email: text("email"),
+  },
+  (table) => [
+    index("contact_inquiry_recipients_mode_idx").on(table.mode),
+    uniqueIndex("contact_inquiry_recipients_unique").on(table.mode, table.recipientType, table.role, table.userId, table.email),
   ],
 );
 

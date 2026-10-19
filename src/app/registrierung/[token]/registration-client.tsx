@@ -1,5 +1,7 @@
 "use client";
 
+import { dateFormatter } from "@/lib/date-format";
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 
 type FormMeta = {
@@ -253,13 +255,13 @@ function SelectInput({
   return (
     <label className="block">
       <span className="text-xs font-semibold text-[color:var(--muted)]">{label}</span>
-      <select className={inputClass} value={value} onChange={(event) => onChange(event.target.value)}>
+      <AppSelect className={inputClass} value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map(([optionValue, label]) => (
           <option key={optionValue} value={optionValue}>
             {label}
           </option>
         ))}
-      </select>
+      </AppSelect>
     </label>
   );
 }
@@ -267,7 +269,7 @@ function SelectInput({
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+  return dateFormatter({ day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
 function errorText(error?: string) {

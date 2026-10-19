@@ -1,5 +1,6 @@
 "use client";
 
+import { notify } from "@/app/_components/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
@@ -13,9 +14,9 @@ export function ResetPasswordClient({ token }: { token: string }) {
   const [busy, setBusy] = React.useState(false);
 
   async function submit() {
-    if (!token) return window.alert("Token fehlt.");
-    if (pw1.length < 8) return window.alert("Passwort muss mindestens 8 Zeichen haben.");
-    if (pw1 !== pw2) return window.alert("Passwörter stimmen nicht überein.");
+    if (!token) return notify("Token fehlt.");
+    if (pw1.length < 8) return notify("Passwort muss mindestens 8 Zeichen haben.");
+    if (pw1 !== pw2) return notify("Passwörter stimmen nicht überein.");
 
     setBusy(true);
     try {
@@ -27,12 +28,12 @@ export function ResetPasswordClient({ token }: { token: string }) {
       const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
       if (!res.ok || !json?.ok) throw new Error(json?.error || "reset_failed");
 
-      window.alert("Passwort gesetzt.");
+      notify("Passwort gesetzt.");
       router.push("/");
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Reset fehlgeschlagen.";
-      window.alert(msg);
+      notify(msg);
     } finally {
       setBusy(false);
     }

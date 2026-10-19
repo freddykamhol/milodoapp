@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
-import path from "node:path";
-import { readFile } from "node:fs/promises";
-
 import { db } from "@/lib/db";
-import { buildUserRemoteFilePath, isSftpEnabled, withSftp } from "@/lib/sftp";
 import { getViewer } from "@/lib/viewer";
-import { getDataDir } from "@/lib/data-dir";
+import { readStoredDocument } from "@/lib/document-storage";
 
 export const runtime = "nodejs";
 
@@ -14,7 +10,7 @@ function isAdminOrVerwaltung(role: string) {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const viewer = await getViewer();
@@ -22,7 +18,7 @@ export async function GET(
 
   const { id } = await params;
   const docId = Number(id);
-  if (!Number.isFinite(docId)) return NextResponse.json({ ok: false }, { status: 400 });
+  if (!Number.isSafeInteger(docId) || docId < 1) return NextResponse.json({ ok: false }, { status: 400 });
 
   const doc = await db.query.documents.findFirst({ where: (t, { eq }) => eq(t.id, docId) });
   if (!doc) return NextResponse.json({ ok: false }, { status: 404 });
@@ -30,48 +26,25 @@ export async function GET(
   const canView = isAdminOrVerwaltung(viewer.role) || viewer.id === doc.ownerId;
   if (!canView) return NextResponse.json({ ok: false }, { status: 403 });
 
-  const sftpOn = await isSftpEnabled();
-  let bytes: Uint8Array;
-  if (sftpOn) {
-    try {
-      const storageKey = String(doc.storageKey || "");
-      const parts = storageKey.split("/");
-      const storedName = parts.at(-1) || "";
-      const ownerKey = parts[0] || "";
-      if (!storedName || !ownerKey) throw new Error("invalid_storage_key");
-
-      const res = await withSftp(async (client, basePath) => {
-        const remoteFile = buildUserRemoteFilePath(basePath, ownerKey, storedName);
-        const data = (await client.get(remoteFile)) as unknown;
-        if (Buffer.isBuffer(data)) return data;
-        if (data instanceof Uint8Array) return Buffer.from(data);
-        if (typeof data === "string") return Buffer.from(data);
-        throw new Error("sftp_download_failed");
-      });
-      if (!res) throw new Error("sftp_not_available");
-      bytes = res;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "sftp_failed";
-      // If the file is missing on SFTP, it must not be available in the system.
-      if (msg.includes("No such file") || msg.includes("not exist") || msg.includes("not found")) {
-        return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
-      }
-      return NextResponse.json({ ok: false, error: "sftp_failed", message: msg }, { status: 500 });
+  let bytes: Buffer;
+  try {
+    bytes = await readStoredDocument(doc);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "document_read_failed";
+    if (msg.includes("not found") || msg.includes("No such file") || msg === "ENOENT") {
+      return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     }
-  } else {
-    const parts = String(doc.storageKey || "").split("/");
-    const storedName = parts.at(-1) || "";
-    const ownerId = Number(parts[0] || doc.ownerId);
-    const diskPath = path.join(getDataDir(), "uploads", String(ownerId), storedName);
-    bytes = await readFile(diskPath);
+    return NextResponse.json({ ok: false, error: "document_read_failed" }, { status: 503 });
   }
 
   const body = Uint8Array.from(bytes).buffer;
   return new Response(body, {
     headers: {
       "content-type": doc.mimeType ?? "application/octet-stream",
-      "content-disposition": `attachment; filename="${encodeURIComponent(doc.fileName)}"`,
+      "content-disposition": `${new URL(request.url).searchParams.get("inline") === "1" && /^(image\/(png|jpeg|webp|gif|avif)|application\/pdf)$/.test(doc.mimeType??'') ? "inline" : "attachment"}; filename="${encodeURIComponent(doc.fileName)}"`,
       "cache-control": "no-store, max-age=0",
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "sandbox",
     },
   });
 }

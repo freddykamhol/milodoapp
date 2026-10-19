@@ -1,5 +1,6 @@
 "use client";
 
+import { dateFormatter } from "@/lib/date-format";
 import * as React from "react";
 
 import { Badge, Card } from "../../_components/ui";
@@ -16,7 +17,7 @@ type NotificationItem = {
 
 function formatTime(input: NotificationItem["createdAt"]) {
   const d = new Date(input);
-  return new Intl.DateTimeFormat("de-DE", {
+  return dateFormatter({
     weekday: "short",
     day: "2-digit",
     month: "2-digit",

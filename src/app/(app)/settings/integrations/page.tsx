@@ -9,7 +9,7 @@ import { IntegrationsClient } from "./_components/integrations-client";
 export default async function IntegrationsSettingsPage() {
   const viewer = await getViewer();
   if (!viewer) redirect("/login");
-  if (viewer.role === "KUNDE") notFound();
+  if (viewer.role !== "ADMIN" && viewer.role !== "VERWALTUNG") notFound();
 
   const isAdmin = viewer.role === "ADMIN" || viewer.role === "VERWALTUNG";
   const isAdminOnly = viewer.role === "ADMIN";

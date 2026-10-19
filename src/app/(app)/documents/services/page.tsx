@@ -1,3 +1,4 @@
+import { dateFormatter } from "@/lib/date-format";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, asc, eq, gte, inArray } from "drizzle-orm";
@@ -9,7 +10,7 @@ import { appointmentFiles, appointments, customers } from "@/db/schema";
 import { getViewer } from "@/lib/viewer";
 
 function formatDateTime(d: Date) {
-  return new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(d);
+  return dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(d);
 }
 
 export default async function ServiceDocumentsPage() {

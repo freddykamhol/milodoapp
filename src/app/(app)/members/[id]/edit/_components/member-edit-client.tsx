@@ -1,5 +1,7 @@
 "use client";
 
+import { notify } from "@/app/_components/feedback";
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
@@ -36,12 +38,15 @@ export function MemberEditClient({
   userId,
   username,
   role,
+  isAdmin,
   initial,
   customer,
+  managementOnly,
 }: {
   userId: number;
   username: string;
   role: string;
+  isAdmin: boolean;
   initial: {
     firstName: string;
     lastName: string;
@@ -55,13 +60,18 @@ export function MemberEditClient({
     telefon: string;
     hourlyRateQualRdCents: number | null;
     hourlyRateQualAusbCents: number | null;
+    contractType: "GFB" | "HONORAR" | null;
   };
   customer: CustomerDraft | null;
+  managementOnly: boolean;
 }) {
   const router = useRouter();
   const [draft, setDraft] = React.useState(initial);
   const [cust, setCust] = React.useState<CustomerDraft | null>(customer);
   const [busy, setBusy] = React.useState(false);
+  const [contractType, setContractType] = React.useState<"" | "GFB" | "HONORAR">(initial.contractType ?? "");
+  const [password, setPassword] = React.useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = React.useState("");
 
   const [rates, setRates] = React.useState(() => ({
     rd: draft.hourlyRateQualRdCents != null ? centsToEuro(draft.hourlyRateQualRdCents) : "",
@@ -71,7 +81,7 @@ export function MemberEditClient({
   async function submit() {
     setBusy(true);
     try {
-      const payload: Record<string, unknown> = {
+      const payload: Record<string, unknown> = managementOnly ? {} : {
         firstName: draft.firstName,
         lastName: draft.lastName,
         geb: draft.geb || null,
@@ -85,6 +95,11 @@ export function MemberEditClient({
         hourlyRateQualRdCents: euroInputToCents(rates.rd),
         hourlyRateQualAusbCents: euroInputToCents(rates.ausb),
       };
+      if (contractType) payload.contractType = contractType;
+      if (isAdmin && password) {
+        if (password !== passwordConfirmation) throw new Error("Die Passwörter stimmen nicht überein.");
+        payload.password = password;
+      }
 
       if (cust) {
         payload.firma = cust.firma;
@@ -103,11 +118,13 @@ export function MemberEditClient({
       });
       const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
       if (!res.ok || !json?.ok) throw new Error(json?.error || "save_failed");
-      window.alert("Gespeichert.");
+      notify("Gespeichert.");
+      setPassword("");
+      setPasswordConfirmation("");
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Speichern fehlgeschlagen.";
-      window.alert(msg);
+      notify(msg);
     } finally {
       setBusy(false);
     }
@@ -122,6 +139,12 @@ export function MemberEditClient({
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {role !== "KUNDE" ? <label className="block">
+          <span className="text-xs font-semibold text-[color:var(--muted)]">Vertragsart</span>
+          <AppSelect className={inputClass} value={contractType} onChange={(e) => setContractType(e.target.value as typeof contractType)}>
+            <option value="">Noch nicht festgelegt</option><option value="GFB">GfB-Vertrag</option><option value="HONORAR">Honorar</option>
+          </AppSelect>
+        </label> : null}
         <label className="block">
           <span className="text-xs font-semibold text-[color:var(--muted)]">Vorname</span>
           <input className={inputClass} value={draft.firstName} onChange={(e) => setDraft((v) => ({ ...v, firstName: e.target.value }))} />
@@ -197,7 +220,7 @@ export function MemberEditClient({
             </label>
             <label className="block">
               <span className="text-xs font-semibold text-[color:var(--muted)]">Hauptbereich</span>
-              <select
+              <AppSelect
                 className={inputClass}
                 value={cust.hauptbereich}
                 onChange={(e) =>
@@ -211,7 +234,7 @@ export function MemberEditClient({
                 <option value="RD_BOERSE">Rettungsdienst</option>
                 <option value="SANITATSDIENST">Sanitätsdienst</option>
                 <option value="ERSTE_HILFE">Erste Hilfe</option>
-              </select>
+              </AppSelect>
             </label>
           </div>
         </div>
@@ -246,6 +269,17 @@ export function MemberEditClient({
                 onChange={(e) => setRates((v) => ({ ...v, ausb: e.target.value }))}
               />
             </label>
+          </div>
+        </div>
+      ) : null}
+
+      {isAdmin ? (
+        <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-soft)]">
+          <p className="text-sm font-semibold">Passwort manuell setzen</p>
+          <p className="mt-1 text-xs text-[color:var(--muted)]">Leer lassen, wenn das aktuelle Passwort unverändert bleiben soll. Mindestens 8 Zeichen.</p>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <label className="block"><span className="text-xs font-semibold text-[color:var(--muted)]">Neues Passwort</span><input type="password" autoComplete="new-password" minLength={8} className={inputClass} value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+            <label className="block"><span className="text-xs font-semibold text-[color:var(--muted)]">Passwort wiederholen</span><input type="password" autoComplete="new-password" minLength={8} className={inputClass} value={passwordConfirmation} onChange={(e) => setPasswordConfirmation(e.target.value)} /></label>
           </div>
         </div>
       ) : null}

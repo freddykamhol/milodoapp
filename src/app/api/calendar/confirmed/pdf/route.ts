@@ -1,8 +1,7 @@
+import { dateFormatter } from "@/lib/date-format";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { and, asc, eq, gte, lt } from "drizzle-orm";
+import {loadCalendarExportRows} from "@/lib/calendar-read-model";
 
-import { db } from "@/lib/db";
-import { appointmentApplications, appointments, customers } from "@/db/schema";
 import { getViewer } from "@/lib/viewer";
 
 function parseDate(value: string | null, fallback: Date) {
@@ -13,7 +12,7 @@ function parseDate(value: string | null, fallback: Date) {
 }
 
 function formatLocal(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", {
+  return dateFormatter({
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -23,7 +22,7 @@ function formatLocal(date: Date) {
 }
 
 function formatLocalDate(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", {
+  return dateFormatter({
     weekday: "short",
     day: "2-digit",
     month: "2-digit",
@@ -32,7 +31,7 @@ function formatLocalDate(date: Date) {
 }
 
 function formatLocalTime(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(date);
+  return dateFormatter({ hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 function wrapText({
@@ -95,29 +94,7 @@ export async function GET(request: Request) {
 
   const viewer = await getViewer();
   if (!viewer) return new Response("unauthorized", { status: 401 });
-  const userId = viewer.id;
-  const rows = await db
-    .select({
-      startAt: appointments.startAt,
-      endAt: appointments.endAt,
-      title: appointments.title,
-      einsatzort: appointments.einsatzort,
-      customerName: customers.name,
-      dienstart: appointments.dienstart,
-    })
-    .from(appointmentApplications)
-    .innerJoin(appointments, eq(appointmentApplications.appointmentId, appointments.id))
-    .innerJoin(customers, eq(appointments.customerId, customers.id))
-    .where(
-      and(
-        eq(appointmentApplications.userId, userId),
-        eq(appointmentApplications.status, "CONFIRMED"),
-        gte(appointments.startAt, from),
-        lt(appointments.startAt, to),
-        eq(appointments.state, "OPEN"),
-      ),
-    )
-    .orderBy(asc(appointments.startAt));
+  const rows = await loadCalendarExportRows(viewer,from,to);
 
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -162,7 +139,7 @@ export async function GET(request: Request) {
       color: brand.accent,
     });
 
-    page.drawText("Zugesagte Termine", {
+    page.drawText("Terminkalender", {
       x: margin,
       y: height - 30,
       size: 16,
@@ -244,7 +221,7 @@ export async function GET(request: Request) {
   ) {
     const dateText = formatLocalDate(row.startAt);
     const timeText = `${formatLocalTime(row.startAt)} – ${row.endAt ? formatLocalTime(row.endAt) : "—"}`;
-    const typeText = row.dienstart ?? "—";
+    const typeText = row.dienstart ?? (row.kind==='DEFECT_APPOINTMENT'?"Mangel":row.kind==='VEHICLE_MAINTENANCE'?"Wartung":"—");
     const titleText = row.title;
     const locationText = `${row.customerName}\n${row.einsatzort}`;
 

@@ -1,11 +1,14 @@
 "use client";
 
+import {Pagination,usePagedItems} from "../_components/pagination";
+import {usePropState} from "@/app/_components/state";
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 import Link from "next/link";
 
 type Item = {
   id: number;
-  createdAt: number;
+  createdAt: number|string;
   status: "NEW" | "DONE";
   mode: string;
   name: string;
@@ -14,7 +17,7 @@ type Item = {
   phone: string;
   message: string;
   sourceUrl: string;
-  readAt: number | null;
+  readAt: number|string|null;
   ip: string;
 };
 
@@ -27,8 +30,9 @@ function statusLabel(status: "NEW" | "DONE") {
 function modeLabel(mode: string) {
   const m = (mode || "").toLowerCase();
   if (m === "eh") return "EH-Ausbildung";
+  if (m === "notfall") return "Notfalltraining";
   if (m === "sanitaet") return "Sanitätsdienst";
-  if (m === "boerse") return "Personal (Börse)";
+  if (m === "boerse") return "Personalvermittlung";
   return "Kontakt";
 }
 
@@ -49,7 +53,8 @@ function useDebouncedValue<T>(value: T, ms: number) {
   return debounced;
 }
 
-export default function ContactAnfragenClient() {
+const emptyItems:Item[]=[];
+export default function ContactAnfragenClient({initialItems}:{initialItems?:Item[]}) {
   const [mode, setMode] = React.useState<string>("");
   const [days, setDays] = React.useState<string>("30");
   const [sort, setSort] = React.useState<Sort>("newest");
@@ -58,11 +63,11 @@ export default function ContactAnfragenClient() {
 
   const qDebounced = useDebouncedValue(q, 250);
 
-  const [items, setItems] = React.useState<Item[]>([]);
+  const [items, setItems] = usePropState(initialItems??emptyItems);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  async function load() {
+  async function load(signal?:AbortSignal) {
     setBusy(true);
     setError(null);
     try {
@@ -74,23 +79,30 @@ export default function ContactAnfragenClient() {
       if (qDebounced.trim()) url.searchParams.set("q", qDebounced.trim());
       url.searchParams.set("limit", "200");
 
-      const res = await fetch(url.toString(), { cache: "no-store" });
+      const res = await fetch(url.toString(), { cache: "no-store",signal });
       const json = (await res.json().catch(() => null)) as { ok?: boolean; items?: Item[]; error?: string } | null;
       if (!res.ok || !json?.ok) throw new Error(json?.error ?? "load_failed");
-      setItems(json.items ?? []);
+      if(!signal?.aborted)setItems(json.items ?? []);
     } catch (e) {
+      if(signal?.aborted)return;
       const msg = e instanceof Error ? e.message : "load_failed";
       setError(msg);
       setItems([]);
     } finally {
-      setBusy(false);
+      if(!signal?.aborted)setBusy(false);
     }
   }
 
+  const firstFilters=React.useRef(true);
+  const paged=usePagedItems(items,mode+"|"+days+"|"+sort+"|"+unread+"|"+qDebounced);
   React.useEffect(() => {
-    void load();
+    if(initialItems&&firstFilters.current&&!mode&&days==="30"&&sort==="newest"&&unread==="1"&&!qDebounced)return;
+    firstFilters.current=false;
+    const controller=new AbortController();
+    const timer = setTimeout(() => void load(controller.signal), 0);
+    return () => {clearTimeout(timer);controller.abort();};
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, days, sort, unread, qDebounced]);
+  }, [mode, days, sort, unread, qDebounced,initialItems]);
 
   return (
     <div className="grid gap-4">
@@ -98,7 +110,7 @@ export default function ContactAnfragenClient() {
         <div className="grid gap-3 md:grid-cols-12 md:items-end">
           <div className="md:col-span-3">
             <div className="text-xs font-semibold tracking-wide text-[color:var(--muted)]">Bereich</div>
-            <select
+            <AppSelect
               className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm outline-none focus:border-[color:var(--ring)]"
               value={mode}
               onChange={(e) => setMode(e.target.value)}
@@ -106,14 +118,15 @@ export default function ContactAnfragenClient() {
               <option value="">Alle</option>
               <option value="kontakt">Kontakt</option>
               <option value="eh">EH-Ausbildung</option>
+              <option value="notfall">Notfalltraining</option>
               <option value="sanitaet">Sanitätsdienst</option>
-              <option value="boerse">Personal (Börse)</option>
-            </select>
+              <option value="boerse">Personalvermittlung</option>
+            </AppSelect>
           </div>
 
           <div className="md:col-span-3">
             <div className="text-xs font-semibold tracking-wide text-[color:var(--muted)]">Zeitraum</div>
-            <select
+            <AppSelect
               className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm outline-none focus:border-[color:var(--ring)]"
               value={days}
               onChange={(e) => setDays(e.target.value)}
@@ -122,24 +135,24 @@ export default function ContactAnfragenClient() {
               <option value="30">Letzte 30 Tage</option>
               <option value="90">Letzte 90 Tage</option>
               <option value="">Alle</option>
-            </select>
+            </AppSelect>
           </div>
 
           <div className="md:col-span-3">
             <div className="text-xs font-semibold tracking-wide text-[color:var(--muted)]">Sortierung</div>
-            <select
+            <AppSelect
               className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm outline-none focus:border-[color:var(--ring)]"
               value={sort}
               onChange={(e) => setSort(e.target.value as Sort)}
             >
               <option value="newest">Neueste</option>
               <option value="oldest">Älteste</option>
-            </select>
+            </AppSelect>
           </div>
 
           <div className="md:col-span-3">
             <div className="text-xs font-semibold tracking-wide text-[color:var(--muted)]">Status</div>
-            <select
+            <AppSelect
               className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm outline-none focus:border-[color:var(--ring)]"
               value={unread}
               onChange={(e) => setUnread(e.target.value)}
@@ -147,7 +160,7 @@ export default function ContactAnfragenClient() {
               <option value="">Alle</option>
               <option value="1">Ungelesen</option>
               <option value="0">Gelesen</option>
-            </select>
+            </AppSelect>
           </div>
 
           <div className="md:col-span-9">
@@ -186,7 +199,7 @@ export default function ContactAnfragenClient() {
           </div>
         ) : null}
 
-        {items.map((row) => (
+        {paged.items.map((row) => (
           <Link
             key={row.id}
             href={`/contactanfragen/${row.id}`}
@@ -234,6 +247,7 @@ export default function ContactAnfragenClient() {
           </Link>
         ))}
       </div>
+      <Pagination {...paged}/>
     </div>
   );
 }

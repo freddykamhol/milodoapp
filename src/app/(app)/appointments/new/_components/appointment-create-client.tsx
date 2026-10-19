@@ -1,5 +1,10 @@
 "use client";
 
+import { notify } from "@/app/_components/feedback";
+import { AppSelect } from "@/app/_components/select";
+import {COURSE_TYPES,courseEnd,courseDuration,type CourseTypeId} from '@/lib/course-types';
+import {CourseMaterialPicker} from '@/app/_components/course-material-picker';
+import type {SelectedCourseMaterial} from '@/lib/course-material-types';
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
@@ -39,7 +44,7 @@ function addMinutes(d: Date, minutes: number) {
 }
 
 function serviceTypeLabel(t: ServiceType) {
-  if (t === "RD_BOERSE") return "Rettungsdienst-Börse";
+  if (t === "RD_BOERSE") return "RD-Personalvermittlung";
   if (t === "SANITATSDIENST") return "Sanitätsdienst";
   return "Erste Hilfe";
 }
@@ -89,7 +94,6 @@ const SAN_ASSETS = [
   "San-Rucksack",
 ] as const;
 
-const EH_ASSETS = ["Rea-Puppe", "Übungs-AED", "Heimlich-Trainer", "Verbandsmaterial"] as const;
 
 export function AppointmentCreateClient({
   customers,
@@ -124,7 +128,7 @@ export function AppointmentCreateClient({
   const [rdDuration, setRdDuration] = React.useState<(typeof RD_DURATION_PRESETS)[number]["key"]>("12h");
 
   const [start, setStart] = React.useState(() => toLocalInput(now));
-  const [end, setEnd] = React.useState(() => toLocalInput(addMinutes(now, 12 * 60)));
+  const [end, setEnd] = React.useState(() => toLocalInput(fixedServiceType==='ERSTE_HILFE'?courseEnd(now,'EH_AUSBILDUNG'):addMinutes(now, 12 * 60)));
   const [endTouched, setEndTouched] = React.useState(false);
 
   const [eventName, setEventName] = React.useState("");
@@ -159,14 +163,15 @@ export function AppointmentCreateClient({
   const [locationCityOptions, setLocationCityOptions] = React.useState<string[]>([]);
 
   const [requirements, setRequirements] = React.useState<RequirementRow[]>([
-    { id: crypto.randomUUID(), minCount: 1, value: "Rettungssanitäter" },
+    { id: crypto.randomUUID(), minCount: 1, value: fixedServiceType==='ERSTE_HILFE'?"EH-Ausbilder":"Rettungssanitäter" },
     { id: crypto.randomUUID(), minCount: "", value: "" },
   ]);
 
   const [assets, setAssets] = React.useState<AssetRow[]>([]);
+  const [courseMaterials,setCourseMaterials]=React.useState<SelectedCourseMaterial[]>([]),[courseLocationType,setCourseLocationType]=React.useState<'OWN'|'EXTERNAL'>('OWN');
   const [visitors, setVisitors] = React.useState<string>("");
   const [participantsCount, setParticipantsCount] = React.useState<number>(0);
-  const [participants, setParticipants] = React.useState<string[]>([]);
+  const [selectedCourse,setSelectedCourse]=React.useState<CourseTypeId>('EH_AUSBILDUNG');
 
   const [notes, setNotes] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -180,7 +185,7 @@ export function AppointmentCreateClient({
   }, [start, now]);
 
   function autoEndFor(nextServiceType: ServiceType, startDate: Date, nextRdDuration = rdDuration) {
-    if (nextServiceType === "ERSTE_HILFE") return addMinutes(startDate, 465);
+    if (nextServiceType === "ERSTE_HILFE") return courseEnd(startDate,selectedCourse);
     if (nextServiceType === "RD_BOERSE") {
       const preset = RD_DURATION_PRESETS.find((p) => p.key === nextRdDuration) ?? RD_DURATION_PRESETS[1];
       if (preset.key === "other") return null;
@@ -219,22 +224,23 @@ export function AppointmentCreateClient({
         }
       : { id: null, ...customerDraft };
 
-  const assetsSuggestions = serviceType === "SANITATSDIENST" ? SAN_ASSETS : serviceType === "ERSTE_HILFE" ? EH_ASSETS : [];
+  const assetsSuggestions = serviceType === "SANITATSDIENST" ? SAN_ASSETS : [];
 
   const validate = () => {
     const s = fromLocalInput(start);
     const e = fromLocalInput(end);
     if (!s || !e || e <= s) return "Start/Ende ist ungültig.";
     if (!customerActive.name.trim()) return "Kunde fehlt.";
-    if (!location.name.trim()) return "Einsatzort fehlt.";
+    if(serviceType==='ERSTE_HILFE'){if(courseLocationType==='EXTERNAL'&&Object.values(location).some(value=>!value.trim()))return 'Bitte alle Angaben zum externen Kursort ausfüllen.';}else if (!location.name.trim()) return "Einsatzort fehlt.";
     if (serviceType === "SANITATSDIENST" && !eventName.trim()) return "Veranstaltungsname fehlt.";
     if (serviceType === "RD_BOERSE" && !rdType) return "RD-Dienstart fehlt.";
+    if(serviceType==='ERSTE_HILFE'&&(!Number.isInteger(participantsCount)||participantsCount<1||participantsCount>500))return 'Bitte die Anzahl der Teilnehmer angeben (1 bis 500).';
     return null;
   };
 
   async function submit() {
     const err = validate();
-    if (err) return window.alert(err);
+    if (err) return notify(err);
     const s = fromLocalInput(start)!;
     const e = fromLocalInput(end)!;
 
@@ -269,7 +275,9 @@ export function AppointmentCreateClient({
         phone: customerActive.phone.trim(),
         createAccount: mode === "admin" ? Boolean(customerActive.createAccount) : false,
       },
-      location: {
+      courseLocationType:serviceType==='ERSTE_HILFE'?courseLocationType:null,
+      courseMaterials:serviceType==='ERSTE_HILFE'?courseMaterials.filter(item=>item.itemId>0):[],
+      location: serviceType==='ERSTE_HILFE'&&courseLocationType==='OWN'?{name:'Eigene Ausbildungsräume',street:'',houseNumber:'',plz:'',city:''}:{
         name: location.name.trim(),
         street: location.street.trim(),
         houseNumber: location.houseNumber.trim(),
@@ -281,7 +289,9 @@ export function AppointmentCreateClient({
         .filter((a) => a.item.trim() && Number(a.count) > 0)
         .map((a) => ({ item: a.item.trim(), count: Math.max(1, Number(a.count) || 1) })),
       visitors: serviceType === "SANITATSDIENST" && visitors.trim() ? Number(visitors) : null,
-      participants: serviceType === "ERSTE_HILFE" ? participants : [],
+      courseType:serviceType==='ERSTE_HILFE'?selectedCourse:null,
+      participantLimit:serviceType==='ERSTE_HILFE'?participantsCount:null,
+      participants: [],
       notes: notes.trim(),
     };
 
@@ -294,23 +304,90 @@ export function AppointmentCreateClient({
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
-        window.alert(data?.message || "Anlegen fehlgeschlagen.");
+        notify(data?.message || "Anlegen fehlgeschlagen.");
         return;
       }
       const data = (await res.json()) as { id?: number };
-      router.push(data.id ? `/appointments/${data.id}` : "/appointments");
+      router.push(data.id ? (serviceType==='ERSTE_HILFE'?`/courses/${data.id}`:`/appointments/${data.id}`) : "/appointments");
     } finally {
       setBusy(false);
     }
   }
 
+  const locationFields=(<div className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <p className="text-sm font-semibold tracking-tight">{serviceType==='ERSTE_HILFE'?'Kursort':'Einsatzort'}</p>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <label className="block md:col-span-3">
+              <span className="text-xs font-semibold text-[color:var(--muted)]">Name</span>
+              <input
+                className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
+                value={location.name}
+                onChange={(e) => setLocation((s) => ({ ...s, name: e.target.value }))}
+              />
+              {serviceType === "SANITATSDIENST" ? (
+                <p className="mt-1 text-[11px] font-semibold text-[color:var(--muted)]">Bei Sanitätsdienst manuell setzen.</p>
+              ) : null}
+            </label>
+
+            <label className="block md:col-span-2">
+              <span className="text-xs font-semibold text-[color:var(--muted)]">Straße</span>
+              <input
+                className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
+                value={location.street}
+                onChange={(e) => setLocation((s) => ({ ...s, street: e.target.value }))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold text-[color:var(--muted)]">Hausnr.</span>
+              <input
+                className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
+                value={location.houseNumber}
+                onChange={(e) => setLocation((s) => ({ ...s, houseNumber: e.target.value }))}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-semibold text-[color:var(--muted)]">PLZ</span>
+              <input
+                inputMode="numeric"
+                className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
+                value={location.plz}
+                onChange={(e) => setLocation((s) => ({ ...s, plz: e.target.value }))}
+                onBlur={() => void plzLookup("location", location.plz)}
+              />
+            </label>
+            <label className="block md:col-span-2">
+              <span className="text-xs font-semibold text-[color:var(--muted)]">Ort</span>
+              {locationCityOptions.length > 1 ? (
+                <AppSelect
+                  className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
+                  value={location.city}
+                  onChange={(e) => setLocation((s) => ({ ...s, city: e.target.value }))}
+                >
+                  <option value="">Bitte wählen…</option>
+                  {locationCityOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </AppSelect>
+              ) : (
+                <input
+                  className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
+                  value={location.city}
+                  onChange={(e) => setLocation((s) => ({ ...s, city: e.target.value }))}
+                  placeholder={locationCityOptions[0] ?? ""}
+                />
+              )}
+            </label>
+          </div>
+        </div>);
   return (
     <div className="flex flex-col gap-6">
       <Card title="Grunddaten" description="Bereich, Datum/Uhrzeit und Kunde festlegen.">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <label className="block">
             <span className="text-xs font-semibold text-[color:var(--muted)]">Bereich</span>
-            <select
+            <AppSelect
               className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
               value={serviceType}
               disabled={Boolean(fixedServiceType)}
@@ -330,14 +407,10 @@ export function AppointmentCreateClient({
                     { id: crypto.randomUUID(), minCount: 1, value: "EH-Ausbilder" },
                     { id: crypto.randomUUID(), minCount: "", value: "" },
                   ]);
-                  setAssets([
-                    { id: crypto.randomUUID(), count: 1, item: "Rea-Puppe" },
-                    { id: crypto.randomUUID(), count: "", item: "" },
-                  ]);
+                  setAssets([]);
                   setVisitors("");
                   setEventName("");
                   setParticipantsCount(0);
-                  setParticipants([]);
                 } else if (next === "SANITATSDIENST") {
                   setAssets([
                     { id: crypto.randomUUID(), count: 1, item: "KTW" },
@@ -353,7 +426,7 @@ export function AppointmentCreateClient({
               <option value="RD_BOERSE">{serviceTypeLabel("RD_BOERSE")}</option>
               <option value="SANITATSDIENST">{serviceTypeLabel("SANITATSDIENST")}</option>
               <option value="ERSTE_HILFE">{serviceTypeLabel("ERSTE_HILFE")}</option>
-            </select>
+            </AppSelect>
           </label>
 
           <label className="block">
@@ -365,7 +438,7 @@ export function AppointmentCreateClient({
               onChange={(e) => {
                 const next = e.target.value;
                 setStart(next);
-                if (endTouched) return;
+                if (endTouched&&serviceType!=='ERSTE_HILFE') return;
                 const s = fromLocalInput(next);
                 if (!s) return;
                 const auto = autoEndFor(serviceType, s);
@@ -380,6 +453,7 @@ export function AppointmentCreateClient({
               type="datetime-local"
               className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
               value={end}
+              readOnly={serviceType==='ERSTE_HILFE'}
               onChange={(e) => {
                 setEndTouched(true);
                 setEnd(e.target.value);
@@ -414,7 +488,7 @@ export function AppointmentCreateClient({
                 <Badge tone="muted">überschreibbar</Badge>
               </div>
             ) : serviceType === "ERSTE_HILFE" ? (
-              <p className="mt-2 text-[11px] font-semibold text-[color:var(--muted)]">Standard: 7,75h (überschreibbar)</p>
+              <p className="mt-2 text-[11px] font-semibold text-[color:var(--muted)]">{courseDuration(selectedCourse)} · Fest berechnet</p>
             ) : null}
           </label>
 
@@ -485,7 +559,7 @@ export function AppointmentCreateClient({
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
               <label className="block md:col-span-3">
                 <span className="text-xs font-semibold text-[color:var(--muted)]">Firma</span>
-                <select
+                <AppSelect
                   className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
                   value={customerId ?? ""}
                   disabled={mode === "customer" || Boolean(fixedCustomerId)}
@@ -496,7 +570,7 @@ export function AppointmentCreateClient({
                       {c.name}
                     </option>
                   ))}
-                </select>
+                </AppSelect>
               </label>
               {selectedCustomer ? (
                 <div className="md:col-span-3 flex flex-wrap gap-2">
@@ -553,7 +627,7 @@ export function AppointmentCreateClient({
               <label className="block md:col-span-2">
                 <span className="text-xs font-semibold text-[color:var(--muted)]">Ort</span>
                 {customerCityOptions.length > 1 ? (
-                  <select
+                  <AppSelect
                     className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
                     value={customerDraft.city}
                     onChange={(e) => setCustomerDraft((s) => ({ ...s, city: e.target.value }))}
@@ -564,7 +638,7 @@ export function AppointmentCreateClient({
                         {c}
                       </option>
                     ))}
-                  </select>
+                  </AppSelect>
                 ) : (
                   <input
                     className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
@@ -608,75 +682,32 @@ export function AppointmentCreateClient({
           )}
         </div>
 
-        <div className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-          <p className="text-sm font-semibold tracking-tight">Einsatzort</p>
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <label className="block md:col-span-3">
-              <span className="text-xs font-semibold text-[color:var(--muted)]">Name</span>
-              <input
-                className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
-                value={location.name}
-                onChange={(e) => setLocation((s) => ({ ...s, name: e.target.value }))}
-              />
-              {serviceType === "SANITATSDIENST" ? (
-                <p className="mt-1 text-[11px] font-semibold text-[color:var(--muted)]">Bei Sanitätsdienst manuell setzen.</p>
-              ) : null}
-            </label>
-
-            <label className="block md:col-span-2">
-              <span className="text-xs font-semibold text-[color:var(--muted)]">Straße</span>
-              <input
-                className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
-                value={location.street}
-                onChange={(e) => setLocation((s) => ({ ...s, street: e.target.value }))}
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-semibold text-[color:var(--muted)]">Hausnr.</span>
-              <input
-                className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
-                value={location.houseNumber}
-                onChange={(e) => setLocation((s) => ({ ...s, houseNumber: e.target.value }))}
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-semibold text-[color:var(--muted)]">PLZ</span>
-              <input
-                inputMode="numeric"
-                className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
-                value={location.plz}
-                onChange={(e) => setLocation((s) => ({ ...s, plz: e.target.value }))}
-                onBlur={() => void plzLookup("location", location.plz)}
-              />
-            </label>
-            <label className="block md:col-span-2">
-              <span className="text-xs font-semibold text-[color:var(--muted)]">Ort</span>
-              {locationCityOptions.length > 1 ? (
-                <select
-                  className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
-                  value={location.city}
-                  onChange={(e) => setLocation((s) => ({ ...s, city: e.target.value }))}
-                >
-                  <option value="">Bitte wählen…</option>
-                  {locationCityOptions.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
-                  value={location.city}
-                  onChange={(e) => setLocation((s) => ({ ...s, city: e.target.value }))}
-                  placeholder={locationCityOptions[0] ?? ""}
-                />
-              )}
-            </label>
-          </div>
-        </div>
+        {serviceType!=='ERSTE_HILFE'?locationFields:null}
       </Card>
 
+      {serviceType==='ERSTE_HILFE'?<>
+          <Card title="Kurs und Teilnehmer" description="Die Teilnehmerdaten können anschließend auf der Kursdetailseite oder über einen externen Erfassungslink eingetragen werden.">
+            <label className="mb-4 block text-xs font-semibold">Kursart<AppSelect aria-label="Kursart" className="mt-2" value={selectedCourse} onChange={event=>{const type=event.target.value as CourseTypeId;setSelectedCourse(type);const date=fromLocalInput(start);if(date)setEnd(toLocalInput(courseEnd(date,type)));}}>{COURSE_TYPES.map(type=><option key={type.id} value={type.id}>{type.label} ({type.units} UE)</option>)}</AppSelect></label>
+            <p className="mb-4 text-sm text-[color:var(--muted)]">{COURSE_TYPES.find(type=>type.id===selectedCourse)?.description}</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <label className="block">
+                <span className="text-xs font-semibold text-[color:var(--muted)]">Anzahl Teilnehmer</span>
+                <input
+                  inputMode="numeric"
+                  type="number" min={1} max={500}
+                  className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
+                  value={String(participantsCount)}
+                  onChange={(e) => {
+                    const nextCount = Math.max(0, Math.min(500, Number(e.target.value) || 0));
+                    setParticipantsCount(nextCount);
+                  }}
+                />
+              </label>
+              <div className="md:col-span-2" />
+            </div>
+          </Card>
+<Card title="Kursort" description="Eigene Ausbildungsräume oder einen externen Veranstaltungsort wählen."><label className="block text-xs font-semibold">Kursort auswählen<AppSelect aria-label="Kursort auswählen" className="mt-2" value={courseLocationType} onChange={event=>setCourseLocationType(event.target.value as 'OWN'|'EXTERNAL')}><option value="OWN">Eigene Ausbildungsräume</option><option value="EXTERNAL">Extern</option></AppSelect></label>{courseLocationType==='EXTERNAL'?locationFields:<p className="mt-4 text-sm text-[color:var(--muted)]">Der Kurs findet in den eigenen Ausbildungsräumen statt. Externe Ortsangaben sind nicht erforderlich.</p>}</Card>
+</>:null}
       <Card title="Personal" description="Qualifikationen und Mindestanzahl je Qualifikation.">
         <div className="space-y-2">
           {requirements.map((r) => (
@@ -705,7 +736,7 @@ export function AppointmentCreateClient({
               </label>
               <label className="block">
                 <span className="text-xs font-semibold text-[color:var(--muted)]">Qualifikation</span>
-                <select
+                <AppSelect
                   className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
                   value={r.value}
                   onChange={(e) =>
@@ -728,7 +759,7 @@ export function AppointmentCreateClient({
                   <option value="Rettungssanitäter">Rettungssanitäter</option>
                   <option value="Rettungsassistent">Rettungsassistent</option>
                   <option value="Notfallsanitäter">Notfallsanitäter</option>
-                </select>
+                </AppSelect>
               </label>
               <div className="md:col-span-2 flex justify-end">
                 <button
@@ -822,107 +853,9 @@ export function AppointmentCreateClient({
         </Card>
       ) : serviceType === "ERSTE_HILFE" ? (
         <>
-          <Card title="Material" description="Material für den Erste-Hilfe-Kurs.">
-            <div className="space-y-2">
-              {assets.map((a) => (
-                <div key={a.id} className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <label className="block">
-                    <span className="text-xs font-semibold text-[color:var(--muted)]">Anzahl</span>
-                    <input
-                      inputMode="numeric"
-                      className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
-                      value={String(a.count)}
-                      onChange={(e) =>
-                        setAssets((s) => {
-                          const raw = e.target.value.trim();
-                          const nextCount: number | "" = raw === "" ? "" : Math.max(1, Number(raw) || 1);
-                          const next = s.map((x) =>
-                            x.id === a.id ? { ...x, count: nextCount } : x,
-                          );
-                          const idx = next.findIndex((x) => x.id === a.id);
-                          if (idx === next.length - 1 && next[idx].item.trim()) {
-                            next.push({ id: crypto.randomUUID(), count: "", item: "" });
-                          }
-                          return next;
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold text-[color:var(--muted)]">Material</span>
-                    <input
-                      className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
-                      value={a.item}
-                      onChange={(e) =>
-                        setAssets((s) => {
-                          const item = e.target.value;
-                          const next = s.map((x) => (x.id === a.id ? { ...x, item } : x));
-                          const idx = next.findIndex((x) => x.id === a.id);
-                          if (idx === next.length - 1 && item.trim()) {
-                            next.push({ id: crypto.randomUUID(), count: 1, item: "" });
-                          }
-                          return next;
-                        })
-                      }
-                      list="eh-assets"
-                    />
-                  </label>
-                </div>
-              ))}
-            </div>
-            <datalist id="eh-assets">
-              {assetsSuggestions.map((x) => (
-                <option key={x} value={x} />
-              ))}
-            </datalist>
-            <p className="mt-3 text-[11px] font-medium text-[color:var(--muted)]">
-              Sobald du eine Zeile ausfüllst, wird automatisch die nächste hinzugefügt.
-            </p>
-          </Card>
+          <Card title="Material" description="Material und Geräte direkt aus der Material- und Inventarverwaltung auswählen."><CourseMaterialPicker value={courseMaterials} onChange={setCourseMaterials} canSelect={mode==='admin'}/></Card>
 
-          <Card title="Teilnehmer" description="Anzahl Teilnehmer und Namensliste.">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <label className="block">
-                <span className="text-xs font-semibold text-[color:var(--muted)]">Anzahl Teilnehmer</span>
-                <input
-                  inputMode="numeric"
-                  className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
-                  value={String(participantsCount)}
-                  onChange={(e) => {
-                    const nextCount = Math.max(0, Math.min(80, Number(e.target.value) || 0));
-                    setParticipantsCount(nextCount);
-                    setParticipants((prev) => {
-                      const next = prev.slice(0, nextCount);
-                      while (next.length < nextCount) next.push("");
-                      return next;
-                    });
-                  }}
-                />
-              </label>
-              <div className="md:col-span-2" />
-            </div>
-            {participantsCount ? (
-              <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
-                {participants.map((p, idx) => (
-                  <input
-                    key={idx}
-                    className="h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
-                    placeholder={`Teilnehmer ${idx + 1}`}
-                    value={p}
-                    onChange={(e) =>
-                      setParticipants((s) => {
-                        const next = s.slice();
-                        next[idx] = e.target.value;
-                        return next;
-                      })
-                    }
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-[color:var(--muted)]">Keine Teilnehmer angegeben.</p>
-            )}
-          </Card>
+
         </>
       ) : null}
 
@@ -991,9 +924,6 @@ export function AppointmentCreateClient({
         />
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs font-semibold text-[color:var(--muted)]">
-            Beim Anlegen wird automatisch ein Dienstdokument unter <span className="font-mono">Dienste</span> erzeugt.
-          </p>
           <button
             type="button"
             disabled={busy}

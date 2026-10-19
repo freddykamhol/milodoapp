@@ -1,12 +1,18 @@
 "use client";
 
+import {usePropState,useHydrated} from "@/app/_components/state";
+import { dateFormatter } from "@/lib/date-format";
+import { notify } from "@/app/_components/feedback";
 import * as React from "react";
 import Link from "next/link";
 
 type CalendarViewMode = "day" | "week" | "month";
 
 type CalendarEvent = {
-  appointmentId: number;
+  id: string;
+  appointmentId: number | null;
+  href: string;
+  kind: "APPOINTMENT" | "VEHICLE_MAINTENANCE" | "DEFECT_APPOINTMENT" | "COURSE";
   startAt: string;
   endAt: string | null;
   title: string;
@@ -14,6 +20,8 @@ type CalendarEvent = {
   customerName: string | null;
   bereich: string;
   dienstart: string | null;
+  meta: string;
+  color?: string | null;
 };
 
 function startOfDay(date: Date) {
@@ -50,7 +58,7 @@ function endOfMonth(date: Date) {
 }
 
 function formatDateLabel(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", {
+  return dateFormatter({
     weekday: "short",
     day: "2-digit",
     month: "2-digit",
@@ -58,7 +66,7 @@ function formatDateLabel(date: Date) {
 }
 
 function formatTime(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(date);
+  return dateFormatter({ hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 function formatRange(start: Date, end: Date | null) {
@@ -178,7 +186,7 @@ function CalendarActions({
                     try {
                       await navigator.clipboard.writeText(webcal);
                     } catch {
-                      window.alert("Kopieren fehlgeschlagen.");
+                      notify("Kopieren fehlgeschlagen.");
                     }
                   }}
                 >
@@ -262,52 +270,48 @@ function groupByDay(events: CalendarEvent[]) {
   return map;
 }
 
-export function CalendarView() {
+export function CalendarView({initialData,initialAnchor}:{initialData?:{events:CalendarEvent[];from:string;to:string};initialAnchor?:string}) {
+  const hydrated=useHydrated();
   const [mode, setMode] = React.useState<CalendarViewMode>("month");
-  const [anchor, setAnchor] = React.useState<Date>(() => new Date());
+  const [anchor, setAnchor] = usePropState(initialAnchor,value=>new Date(value??Date.now()));
 
-  const [events, setEvents] = React.useState<CalendarEvent[]>([]);
+  const [loaded,setLoaded]=usePropState(initialData??null);
+  const events=loaded?.events??[];
   const [isLoading, setIsLoading] = React.useState(false);
 
   const { from, to } = React.useMemo(() => getRange(mode, anchor), [mode, anchor]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    async function run() {
+  React.useEffect(()=>{
+    if(loaded&&from>=new Date(loaded.from)&&to<=new Date(loaded.to))return;
+    const controller=new AbortController();
+    async function run(){
       setIsLoading(true);
-      try {
-        const search = new URLSearchParams({ from: toISO(from), to: toISO(to) });
-        const res = await fetch(`/api/calendar/confirmed?${search.toString()}`, {
-          cache: "no-store",
-        });
-        if (!res.ok) throw new Error("fetch_failed");
-        const data = (await res.json()) as { events: CalendarEvent[] };
-        if (!cancelled) setEvents(data.events ?? []);
-      } catch {
-        if (!cancelled) setEvents([]);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
+      try{
+        const search=new URLSearchParams({from:toISO(from),to:toISO(to)});
+        const response=await fetch("/api/calendar/confirmed?"+search.toString(),{cache:"no-store",signal:controller.signal});
+        if(!response.ok)throw new Error("Kalender konnte nicht geladen werden.");
+        const data=await response.json() as {events:CalendarEvent[]};
+        if(!controller.signal.aborted)setLoaded({events:data.events??[],from:toISO(from),to:toISO(to)});
+      }catch{if(!controller.signal.aborted)setLoaded({events:[],from:toISO(from),to:toISO(to)});}
+      finally{if(!controller.signal.aborted)setIsLoading(false);}
     }
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [from, to]);
+    void run();return()=>controller.abort();
+  },[from,to,loaded,setLoaded]);
 
   const title = React.useMemo(() => {
     if (mode === "day") {
-      return new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "2-digit", month: "long" }).format(anchor);
+      return dateFormatter({ weekday: "long", day: "2-digit", month: "long" }).format(anchor);
     }
     if (mode === "week") {
       const w0 = startOfWeekMonday(anchor);
       const w6 = addDays(w0, 6);
       return `${formatDateLabel(w0)} – ${formatDateLabel(w6)}`;
     }
-    return new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(anchor);
+    return dateFormatter({ month: "long", year: "numeric" }).format(anchor);
   }, [mode, anchor]);
 
   const byDay = React.useMemo(() => groupByDay(events), [events]);
+  if(!hydrated)return <div role="status" className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-6 text-sm">Kalender wird geladen …</div>;
 
   return (
     <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-soft)] sm:p-5">
@@ -366,6 +370,14 @@ export function CalendarView() {
           <p className="text-xs text-[color:var(--muted)]">Lade Termine…</p>
         ) : null}
 
+        {mode !== "day" ? <div className="space-y-4 sm:hidden">
+          <p className="text-xs text-[color:var(--muted)]">Terminliste für {title}</p>
+          {Array.from(byDay.keys()).sort().filter(key => new Date(key) >= from && new Date(key) < to).map(key =>
+            <DayList key={key} anchor={new Date(key)} byDay={byDay} />
+          )}
+          {!Array.from(byDay.keys()).some(key => new Date(key) >= from && new Date(key) < to) ? <p className="py-4 text-sm">Keine Termine in diesem Zeitraum.</p> : null}
+        </div> : null}
+        <div className={mode === "day" ? "" : "hidden sm:block"}>
         {mode === "month" ? (
           <MonthGrid from={from} to={to} byDay={byDay} />
         ) : mode === "week" ? (
@@ -373,6 +385,7 @@ export function CalendarView() {
         ) : (
           <DayList anchor={anchor} byDay={byDay} />
         )}
+        </div>
       </div>
     </div>
   );
@@ -393,7 +406,7 @@ function MonthGrid({
     days.push(new Date(d));
   }
 
-  const monthLabel = new Intl.DateTimeFormat("de-DE", { month: "2-digit" }).format(addDays(from, 10));
+  const monthLabel = dateFormatter({ month: "2-digit" }).format(addDays(from, 10));
 
   return (
     <div className="overflow-hidden rounded-2xl border border-[var(--border)]">
@@ -408,7 +421,7 @@ function MonthGrid({
         {days.map((date) => {
           const key = startOfDay(date).toISOString();
           const list = byDay.get(key) ?? [];
-          const inMonth = new Intl.DateTimeFormat("de-DE", { month: "2-digit" }).format(date) === monthLabel;
+          const inMonth = dateFormatter({ month: "2-digit" }).format(date) === monthLabel;
           const isToday = key === todayKey;
           return (
             <div
@@ -445,10 +458,11 @@ function MonthGrid({
               <div className="mt-1 flex flex-col gap-1">
                 {list.slice(0, 2).map((ev) => (
                   <Link
-                    key={ev.appointmentId}
-                    href={`/appointments/${ev.appointmentId}`}
-                    className="rounded-xl bg-[color:color-mix(in_oklab,var(--accent)_12%,transparent)] px-2 py-1 text-[11px] font-semibold leading-snug hover:underline"
+                    key={ev.id}
+                    href={ev.href}
+                    className={`rounded-xl px-2 py-1 text-[11px] font-semibold leading-snug hover:underline ${ev.kind === "VEHICLE_MAINTENANCE" || ev.kind === "DEFECT_APPOINTMENT" ? "bg-amber-100 text-amber-950" : "bg-[color:color-mix(in_oklab,var(--accent)_12%,transparent)]"}`}
                     title={ev.title}
+                    style={ev.color ? { borderLeft: `4px solid ${ev.color}` } : undefined}
                   >
                     <span className="block text-[color:var(--muted)]">
                       {formatTime(new Date(ev.startAt))}
@@ -526,18 +540,17 @@ function WeekGrid({
                 {list.length ? (
                   list.map((ev) => (
                     <Link
-                      key={ev.appointmentId}
-                      href={`/appointments/${ev.appointmentId}`}
-                      title={`${ev.title} • ${ev.customerName ?? ""} ${ev.einsatzort}`}
-                      className="block rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1.5 text-[11px] font-semibold leading-snug hover:bg-[var(--surface)]"
+                      key={ev.id}
+                      href={ev.href}
+                      title={`${ev.title} • ${ev.meta}`}
+                      className={`block rounded-xl border px-2 py-1.5 text-[11px] font-semibold leading-snug ${ev.kind === "VEHICLE_MAINTENANCE" || ev.kind === "DEFECT_APPOINTMENT" ? "border-amber-300 bg-amber-100 text-amber-950 hover:bg-amber-200" : "border-[var(--border)] bg-[var(--surface-2)] hover:bg-[var(--surface)]"}`}
                     >
                       <span className="text-[color:var(--muted)]">
                         {formatRange(new Date(ev.startAt), ev.endAt ? new Date(ev.endAt) : null)}
                       </span>
                       <span className="mt-0.5 block whitespace-normal break-words">{ev.title}</span>
                       <span className="mt-0.5 block text-[10px] font-medium text-[color:var(--muted)]">
-                        {ev.customerName ? `${ev.customerName} • ` : ""}
-                        {ev.einsatzort}
+                        {ev.meta}
                       </span>
                     </Link>
                   ))
@@ -572,15 +585,14 @@ function DayList({
         {list.length ? (
           list.map((ev) => (
             <Link
-              key={ev.appointmentId}
-              href={`/appointments/${ev.appointmentId}`}
-              className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-[var(--surface-2)]"
+              key={ev.id}
+              href={ev.href}
+              className={`flex items-center justify-between gap-4 px-4 py-3 ${ev.kind === "VEHICLE_MAINTENANCE" || ev.kind === "DEFECT_APPOINTMENT" ? "bg-amber-50/70 hover:bg-amber-100" : "hover:bg-[var(--surface-2)]"}`}
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{ev.title}</p>
                 <p className="mt-1 truncate text-xs text-[color:var(--muted)]">
-                  {ev.customerName ? `${ev.customerName} • ` : ""}
-                  {ev.einsatzort}
+                  {ev.meta}
                 </p>
               </div>
               <div className="shrink-0 text-right">

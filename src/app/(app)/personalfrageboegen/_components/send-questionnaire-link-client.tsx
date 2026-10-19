@@ -1,5 +1,6 @@
 "use client";
 
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 import { createPortal } from "react-dom";
 
@@ -13,17 +14,13 @@ export function SendQuestionnaireLinkClient() {
   const [error, setError] = React.useState<string | null>(null);
   const [sent, setSent] = React.useState(false);
 
-  React.useEffect(() => {
-    if (!open) return;
-    setError(null);
-    setSent(false);
-  }, [open]);
+
 
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => { setError(null); setSent(false); setOpen(true); }}
         className="inline-flex items-center justify-center rounded-xl bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-[var(--shadow-soft)] hover:brightness-[1.02]"
       >
         Link versenden
@@ -59,14 +56,14 @@ export function SendQuestionnaireLinkClient() {
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="block">
                       <span className="text-xs font-semibold tracking-tight text-[color:var(--muted)]">Fragebogen</span>
-                      <select
+                      <AppSelect
                         value={kind}
                         onChange={(e) => setKind(e.target.value === "MINIJOB" ? "MINIJOB" : "HONORAR")}
                         className="mt-2 w-full rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-sm outline-none"
                       >
                         <option value="HONORAR">Honorar</option>
-                        <option value="MINIJOB">Minijob</option>
-                      </select>
+                        <option value="MINIJOB">GfB</option>
+                      </AppSelect>
                     </label>
                     <label className="block">
                       <span className="text-xs font-semibold tracking-tight text-[color:var(--muted)]">Ziel‑E‑Mail</span>

@@ -11,6 +11,8 @@ export default async function MembersPage() {
   if (viewer.role === "KUNDE") notFound();
 
   const membersRaw = await db.query.users.findMany({
+    columns: { id: true, username: true, firstName: true, lastName: true, role: true, contractType: true, geb: true, qualRD: true, qualAusb: true, einsatzort: true, locked: true, publicFirstName: true, publicLastName: true, publicGeb: true, publicQualifications: true },
+    where: viewer.role === "PERSONAL" ? (t, { ne }) => ne(t.role, "KUNDE") : undefined,
     orderBy: (t, { asc }) => [asc(t.role), asc(t.username)],
   });
 
@@ -31,6 +33,7 @@ export default async function MembersPage() {
     firstName: canViewAll || viewer.id === m.id || Boolean(m.publicFirstName) ? (m.firstName ?? "") : "",
     lastName: canViewAll || viewer.id === m.id || Boolean(m.publicLastName) ? (m.lastName ?? "") : "",
     role: m.role,
+    contractType: canViewAll ? (m.contractType ?? null) : null,
     geb: canViewAll || viewer.id === m.id || Boolean(m.publicGeb) ? (m.geb ? m.geb.toISOString() : null) : null,
     qualRD: canViewAll || viewer.id === m.id || Boolean(m.publicQualifications) ? (m.qualRD ?? null) : null,
     qualAusb: canViewAll || viewer.id === m.id || Boolean(m.publicQualifications) ? (m.qualAusb ?? null) : null,
@@ -40,7 +43,7 @@ export default async function MembersPage() {
   }));
 
   const canCreate = viewer.role === "ADMIN";
-  const canManage = viewer.role === "ADMIN";
+  const canManage = viewer.role === "ADMIN" || viewer.role === "VERWALTUNG";
 
   return (
     <AppShell title="Mitglieder" subtitle="Übersicht über alle Mitglieder und Qualifikationen.">

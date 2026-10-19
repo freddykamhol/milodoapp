@@ -1,5 +1,6 @@
 "use client";
 
+import { notify, confirmAction } from "@/app/_components/feedback";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -169,7 +170,7 @@ export function AppointmentContextMenu({
         : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
       window.open(url, "_blank", "noopener,noreferrer");
     } catch {
-      window.alert("Navigation konnte nicht gestartet werden.");
+      notify("Navigation konnte nicht gestartet werden.");
     }
   };
 
@@ -330,14 +331,14 @@ export function AppointmentContextMenu({
                     disabled={isSubmitting}
                     onClick={async () => {
                       close();
-                      if (!confirm("Termin wirklich löschen?")) return;
+                      if (!(await confirmAction("Termin wirklich löschen?"))) return;
                       try {
                         setIsSubmitting(true);
                         const res = await fetch(`/api/appointments/${appointmentId}`, { method: "DELETE" });
                         if (!res.ok) throw new Error("delete_failed");
                         router.refresh();
                       } catch {
-                        window.alert("Löschen fehlgeschlagen.");
+                        notify("Löschen fehlgeschlagen.");
                       } finally {
                         setIsSubmitting(false);
                       }
@@ -388,9 +389,18 @@ export function AppointmentContextMenu({
                 <button
                   type="button"
                   disabled={isSubmitting}
-                  onClick={() => {
+                  onClick={async () => {
                     close();
-                    window.alert("Absage ist noch nicht verdrahtet (Backend folgt).");
+                    if (!(await confirmAction("Deine Meldung oder Einteilung zu diesem Dienst absagen?"))) return;
+                    setIsSubmitting(true);
+                    try {
+                      const response = await fetch(`/api/appointments/${appointmentId}/report`, { method: "DELETE" });
+                      const result = await response.json();
+                      if (!response.ok) throw new Error(result.error ?? "Absage fehlgeschlagen.");
+                      notify("Der Dienst wurde abgesagt.");
+                      window.dispatchEvent(new Event("milodo:notifications:refresh")); router.refresh();
+                    } catch (error) { notify(error instanceof Error ? error.message : "Absage fehlgeschlagen."); }
+                    finally { setIsSubmitting(false); }
                   }}
                   className="block w-full px-3 py-2 text-left text-sm font-semibold text-[color:var(--danger)] hover:bg-[var(--surface-2)] disabled:opacity-60"
                 >

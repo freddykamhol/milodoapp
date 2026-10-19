@@ -149,7 +149,11 @@ try {
   const persisted = await page.evaluate(() => JSON.parse(window.post.contentBlocksJson)[0].html);
   assert.match(persisted, /font-size:\s*26pt/);
   assert.match(persisted, /<br \/>Gespeicherter Umbruch/);
+  const previousEditor = await fullEditor.elementHandle();
   await page.evaluate(() => window.fullEditor());
+  // root.render is asynchronous: do not mistake the old, still populated
+  // editor for the reloaded one before React commits the replacement.
+  await page.waitForFunction(element => !element.isConnected, previousEditor);
   await page.waitForFunction(() => document.querySelector('[contenteditable]')?.textContent.includes('Gespeicherter Umbruch'));
   assert.equal(await fullEditor.evaluate(el => window.clean(el.innerHTML)), persisted, 'Full blog editor save/load preserves HTML');
   const previewHtml = await page.locator('.blog-rich-content:not([contenteditable])').last().evaluate(el => window.clean(el.innerHTML));

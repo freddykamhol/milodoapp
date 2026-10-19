@@ -1,3 +1,4 @@
+import type { QuestionnaireWithFiles } from "@/lib/questionnaire-types";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
@@ -19,7 +20,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const questionnaireId = Number(id);
   if (!Number.isFinite(questionnaireId)) return new Response("invalid id", { status: 400 });
 
-  let row: any = null;
+  let row: QuestionnaireWithFiles | undefined;
   try {
     row = await db.query.personalQuestionnaires.findFirst({
       where: (t, { eq }) => eq(t.id, questionnaireId),

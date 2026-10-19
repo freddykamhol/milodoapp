@@ -1,6 +1,8 @@
 "use client";
 
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
+import {FilePreviews} from "@/app/_components/file-upload";
 
 type Einsatzfeld = "RETTUNGSDIENST" | "SANITAETSDIENST" | "ERSTE_HILFE_AUSBILDUNG";
 type QualMed =
@@ -61,7 +63,7 @@ function Select({
   return (
     <label className="block">
       <span className="text-xs font-semibold tracking-tight text-[color:var(--muted)]">{label}</span>
-      <select
+      <AppSelect
         {...props}
         className={cn(
           "mt-2 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm outline-none",
@@ -70,7 +72,7 @@ function Select({
         )}
       >
         {children}
-      </select>
+      </AppSelect>
     </label>
   );
 }
@@ -153,7 +155,7 @@ function FilePicker({
 }) {
   const inputId = React.useId();
   const safeFiles = React.useMemo(
-    () => (Array.isArray(files) ? files.filter((f) => Boolean(f && typeof (f as any).name === "string")) : []),
+    () => (Array.isArray(files) ? files.filter((f) => Boolean(f && typeof f.name === "string")) : []),
     [files],
   );
   return (
@@ -191,7 +193,7 @@ function FilePicker({
         accept={accept}
         className="sr-only"
         multiple={Boolean(multiple)}
-        onChange={(e) => onReplace(e.target.files)}
+        onChange={(e) => {onReplace(e.target.files);e.currentTarget.value="";}}
       />
       {multiple ? (
         <input
@@ -200,32 +202,11 @@ function FilePicker({
           accept={accept}
           className="sr-only"
           multiple
-          onChange={(e) => onAdd(e.target.files)}
+          onChange={(e) => {onAdd(e.target.files);e.currentTarget.value="";}}
         />
       ) : null}
 
-      {safeFiles.length ? (
-        <ul className="mt-3 space-y-2">
-          {safeFiles.map((f, idx) => (
-            <li
-              key={`${f.name}-${f.size}-${f.lastModified}-${idx}`}
-              className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[color:var(--surface)] px-3 py-2"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{f.name}</p>
-                <p className="mt-0.5 text-xs text-[color:var(--muted)]">{Math.round(f.size / 1024)} KB</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => onRemoveAt(idx)}
-                className="inline-flex shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-semibold hover:bg-[var(--surface-2)]"
-              >
-                Entfernen
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <FilePreviews files={safeFiles} onRemove={onRemoveAt}/>
     </div>
   );
 }
@@ -310,12 +291,7 @@ export function PersonalfragebogenHonorarClient() {
     [],
   );
 
-  React.useEffect(() => {
-    if (!bankAccountHolderDiffers) {
-      const full = `${firstName} ${lastName}`.trim();
-      setBankAccountHolder(full);
-    }
-  }, [bankAccountHolderDiffers, firstName, lastName]);
+  const effectiveAccountHolder = bankAccountHolderDiffers ? bankAccountHolder : `${firstName} ${lastName}`.trim();
 
   const canGoNext = React.useMemo(() => {
     if (step === 1)
@@ -408,7 +384,7 @@ export function PersonalfragebogenHonorarClient() {
       payload.set("email", email);
 
       payload.set("bankAccountHolderDiffers", bankAccountHolderDiffers ? "1" : "0");
-      payload.set("bankAccountHolder", bankAccountHolder);
+      payload.set("bankAccountHolder", effectiveAccountHolder);
       payload.set("bankName", bankName);
       payload.set("iban", iban);
       payload.set("blz", blz);
@@ -436,8 +412,8 @@ export function PersonalfragebogenHonorarClient() {
 
       (Object.keys(files) as UploadKind[]).forEach((kind) => {
         for (const f of files[kind] || []) {
-          if (!f || typeof (f as any).name !== "string") continue;
-          payload.append(`file:${kind}`, f, (f as any).name);
+          if (!f || typeof f.name !== "string") continue;
+          payload.append(`file:${kind}`, f, f.name);
         }
       });
 
@@ -586,7 +562,7 @@ export function PersonalfragebogenHonorarClient() {
               ) : (
                 <div className="md:col-span-2 rounded-3xl border border-[var(--border)] bg-white px-4 py-3 text-sm shadow-[var(--shadow-soft)]">
                   <p className="text-xs font-semibold tracking-tight text-[color:var(--muted)]">Kontoinhaber</p>
-                  <p className="mt-1 font-semibold">{bankAccountHolder || "—"}</p>
+                  <p className="mt-1 font-semibold">{effectiveAccountHolder || "—"}</p>
                 </div>
               )}
 

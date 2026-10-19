@@ -1,12 +1,13 @@
 "use client";
 
+import { dateFormatter } from "@/lib/date-format";
 import * as React from "react";
 import Link from "next/link";
 
 import { Badge } from "./ui";
 
 function formatTime(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(date);
+  return dateFormatter({ hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 function formatTimeRange(startAt: Date, endAt: Date | null) {
@@ -15,35 +16,33 @@ function formatTimeRange(startAt: Date, endAt: Date | null) {
 }
 
 type Item = { id: number; startAt: string; endAt: string | null; title: string; einsatzort: string };
+type TodayData = { confirmed: Item[]; birthdays: Array<{ id: number; username: string }>; requests: Item[] };
+const TODAY_CACHE_MS = 60_000;
+let todayCache: { at: number; data: TodayData } | null = null;
+let todayRequest: Promise<TodayData | null> | null = null;
+
+async function loadToday() {
+  if (todayCache && Date.now() - todayCache.at < TODAY_CACHE_MS) return todayCache.data;
+  if (todayRequest) return todayRequest;
+  todayRequest = fetch("/api/today", { method: "GET", cache: "no-store" })
+    .then(async (res) => {
+      if (!res.ok) return null;
+      const json = await res.json() as { ok: boolean; today?: TodayData };
+      if (!json.ok || !json.today) return null;
+      todayCache = { at: Date.now(), data: json.today };
+      return json.today;
+    })
+    .catch(() => null)
+    .finally(() => { todayRequest = null; });
+  return todayRequest;
+}
 
 export function TodayInView() {
-  const [data, setData] = React.useState<{
-    confirmed: Item[];
-    birthdays: Array<{ id: number; username: string }>;
-    requests: Item[];
-  } | null>(null);
+  const [data, setData] = React.useState<TodayData | null>(() => todayCache?.data ?? null);
 
   React.useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/today", { method: "GET", cache: "no-store" });
-        if (!res.ok) return;
-        const json = (await res.json()) as {
-          ok: boolean;
-          today?: {
-            confirmed: Item[];
-            birthdays: Array<{ id: number; username: string }>;
-            requests: Item[];
-          };
-        };
-        if (!json.ok || !json.today) return;
-        if (cancelled) return;
-        setData(json.today);
-      } catch {
-        // ignore
-      }
-    })();
+    void loadToday().then((today) => { if (!cancelled && today) setData(today); });
     return () => {
       cancelled = true;
     };
@@ -60,7 +59,7 @@ export function TodayInView() {
           <p className="text-xs font-semibold">Heute im Blick</p>
           <p className="mt-1 text-xs text-[color:var(--muted)]">Heutige Termine, Geburtstage und Abfragen.</p>
         </div>
-        <Badge tone="muted">{new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" }).format(new Date())}</Badge>
+        <Badge tone="muted">{dateFormatter({ day: "2-digit", month: "2-digit" }).format(new Date())}</Badge>
       </div>
 
       <div className="mt-3 space-y-3">

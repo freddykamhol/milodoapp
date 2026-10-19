@@ -1,0 +1,17 @@
+import type {DefectAppointment} from "./defect-appointment-types";
+import type { inventoryItems, inventoryMovements, inventoryInspections, inventoryDefects, vehicleDefects } from "@/db/schema";
+export type Wire<T> = T extends Date ? string : T extends (infer U)[] ? Wire<U>[] : T extends object ? { [K in keyof T]: Wire<T[K]> } : T;
+export type InventoryItem = Wire<typeof inventoryItems.$inferSelect>;
+export type InventoryListItem = Pick<InventoryItem,"id"|"name"|"category"|"inventoryNumber"|"quantity"|"minimumQuantity"|"unit"|"location"|"status"|"nextInspectionAt"|"expiryAt"|"oxygenCapacityLiters">;
+export type InventoryMovement = Wire<typeof inventoryMovements.$inferSelect>;
+export type InventoryInspection = Wire<typeof inventoryInspections.$inferSelect>;
+export type InventoryDefect = Wire<typeof inventoryDefects.$inferSelect>;
+export type InventoryDefectSummary = Pick<InventoryDefect,"id"|"title"|"description"|"status"|"createdAt">;
+export type InventoryDetailData = { item:InventoryItem;defectAppointments?:DefectAppointment[];movements:{movement:InventoryMovement;username:string}[];inspections:{inspection:InventoryInspection;username:string}[];defects:{defect:InventoryDefectSummary;username:string}[];vehicleOptions:{id:number;licensePlate:string;type:string}[];canManage:boolean };
+export type InventoryDefectRow = { defect:Omit<InventoryDefectSummary,"description">;itemName:string;inventoryNumber:string|null;username:string };
+export type InventoryInspectionRow = { inspection:InventoryInspection;itemName:string;inventoryNumber:string|null;username:string };
+export type VehicleDefectRow = { defect:Pick<Wire<typeof vehicleDefects.$inferSelect>,"id"|"vehicleId"|"title"|"status"|"createdAt"|"category">; vehicle:{licensePlate:string} };
+export type ServiceVehicle = { id:number;vehicleId:number;licensePlate:string;type:string;members:{userId:number;username:string;qualRD:string|null;qualAusb:string|null}[] };
+export type InventoryFeed = {items?:InventoryListItem[];defects?:InventoryDefectRow[];inspections?:InventoryInspectionRow[];schedule?:InventoryListItem[];movements?:{movement:InventoryMovement;itemName:string;inventoryNumber?:string|null}[];error?:string};
+export type FleetVehicle = {id:number;licensePlate:string;type:string;mileage:number;location:string;tuvLastAt:string|null;isActive:boolean;booking:{status:string;title?:string;startAt?:string;endAt?:string|null}};
+export type FleetFeed = {vehicles:FleetVehicle[];defects:VehicleDefectRow[];trips:{trip:{id:number;vehicleId:number;title:string;kmStart:number;kmEnd:number;startAt:string;endAt:string};vehicle:{licensePlate:string};appointment:{title:string;startAt:string}|null}[];canManage:boolean};

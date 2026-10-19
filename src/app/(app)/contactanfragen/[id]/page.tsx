@@ -22,8 +22,9 @@ function safeJsonParse(raw: string): unknown {
 function modeLabel(mode: string) {
   const m = (mode || "").toLowerCase();
   if (m === "eh") return "EH-Ausbildung";
+  if (m === "notfall") return "Notfalltraining";
   if (m === "sanitaet") return "Sanitätsdienst";
-  if (m === "boerse") return "Personal (Börse)";
+  if (m === "boerse") return "Personalvermittlung";
   return "Kontakt";
 }
 
@@ -88,7 +89,7 @@ export default async function ContactInquiryDetailPage(props: { params: Promise<
     });
   } else if (row.mode === "boerse") {
     sections.push({
-      title: "Details Personal (Börse)",
+      title: "Details Personalvermittlung",
       items: [
         { label: "Zeitraum von", value: String(detailsObj.shiftDateFrom ?? "—") },
         { label: "Zeitraum bis", value: String(detailsObj.shiftDateTo ?? "—") },

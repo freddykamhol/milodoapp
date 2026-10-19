@@ -1,3 +1,4 @@
+import { dateFormatter } from "@/lib/date-format";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
   });
   if (!key?.apiKey?.trim()) return NextResponse.json({ ok: false, error: "missing_key" }, { status: 400 });
 
-  const description = `✅ Milodo Testnachricht (${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date())})`;
+  const description = `✅ Milodo Testnachricht (${dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(new Date())})`;
   const params = new URLSearchParams({
     apikey: key.apiKey,
     application: "Milodo",

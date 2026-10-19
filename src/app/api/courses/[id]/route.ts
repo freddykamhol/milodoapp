@@ -1,0 +1,24 @@
+import {NextResponse} from 'next/server';
+import {sqlite} from '@/lib/db';
+import {db} from '@/lib/db';
+import {eq} from 'drizzle-orm';
+import {appointmentRequirements,courseMaterials,customers} from '@/db/schema';
+import {courseRoute} from '@/lib/course-route';
+import {loadCourse,validateCourse,courseTimestamp,CourseError} from '@/lib/courses';
+import {courseEnd} from '@/lib/course-types';
+import {validateCourseMaterials} from '@/lib/course-materials';
+export const GET=courseRoute(async(_request,{row},viewer)=>NextResponse.json(await loadCourse(row.id,viewer),{headers:{'cache-control':'no-store'}}));
+export const PATCH=courseRoute(async(request,{row})=>{
+ const body=await request.json(),values=validateCourse(body.courseType,body.participantLimit),start=courseTimestamp(body.startAt??row.startAt.toISOString()),end=courseEnd(start,values.courseType),customerId=Number(body.customerId??row.customerId);
+ if(!Number.isSafeInteger(customerId)||!(await db.query.customers.findFirst({where:eq(customers.id,customerId)})))throw new CourseError('Kunde nicht gefunden.',400);
+ const title=String(body.title??row.title).trim();if(!title||title.length>200)throw new CourseError('Der Kurstitel ist erforderlich und darf maximal 200 Zeichen enthalten.',400);
+ const location=body.location&&typeof body.location==='object'?body.location as Record<string,unknown>:{},courseLocationType=body.courseLocationType==='EXTERNAL'?'EXTERNAL':'OWN';
+ const locationName=courseLocationType==='OWN'?'Eigene Ausbildungsräume':String(location.name??'').trim(),street=String(location.street??'').trim(),houseNumber=String(location.houseNumber??'').trim(),plz=String(location.plz??'').trim(),city=String(location.city??'').trim();
+ if(courseLocationType==='EXTERNAL'&&(!locationName||!street||!houseNumber||!plz||!city))throw new CourseError('Bitte den externen Kursort vollständig ausfüllen.',400);
+ const einsatzort=[locationName,[street,houseNumber].filter(Boolean).join(' '),[plz,city].filter(Boolean).join(' ')].filter(Boolean).join(' · '),details={...(JSON.parse(row.detailsJson||'{}') as Record<string,unknown>),courseLocationType,location:{name:locationName,street,houseNumber,plz,city}};
+ const materials=await validateCourseMaterials(body.courseMaterials??[]),requirements=Array.isArray(body.requirements)?body.requirements.map((value:{kind?:unknown;value?:unknown;minCount?:unknown})=>({kind:(value.kind==='QUAL_RD'?'QUAL_RD':'QUAL_AUSB') as 'QUAL_RD'|'QUAL_AUSB',value:String(value.value??'').trim(),minCount:Math.max(1,Math.round(Number(value.minCount??1)))})).filter((value:{kind:'QUAL_RD'|'QUAL_AUSB';value:string;minCount:number})=>value.value):[];
+ sqlite.transaction(()=>{const count=(sqlite.prepare('select count(*) as n from course_participants where appointment_id=?').get(row.id) as {n:number}).n;if(count>values.courseParticipantLimit)throw new CourseError('Die Teilnehmerzahl darf nicht unter der bereits erfassten Anzahl liegen.',409);sqlite.prepare('update appointments set title=?,customer_id=?,einsatzort=?,notes=?,details_json=?,course_type=?,course_participant_limit=?,start_at=?,end_at=?,course_registration_expires_at=case when course_registration_hash is not null then ? else null end,updated_at=? where id=?').run(title,customerId,einsatzort,String(body.notes??''),JSON.stringify(details),values.courseType,values.courseParticipantLimit,+start,+end,+end,Date.now(),row.id);}).immediate();
+ await db.delete(appointmentRequirements).where(eq(appointmentRequirements.appointmentId,row.id));if(requirements.length)await db.insert(appointmentRequirements).values((requirements as Array<{kind:'QUAL_RD'|'QUAL_AUSB';value:string;minCount:number}>).map((value:{kind:'QUAL_RD'|'QUAL_AUSB';value:string;minCount:number})=>({...value,appointmentId:row.id})));
+ await db.delete(courseMaterials).where(eq(courseMaterials.appointmentId,row.id));if(materials.length)await db.insert(courseMaterials).values((materials as Array<{itemId:number;name:string;inventoryNumber:string;quantity:number}>).map(value=>({appointmentId:row.id,itemId:value.itemId,name:value.name,inventoryNumber:value.inventoryNumber,quantity:value.quantity})));
+ return NextResponse.json({ok:true});
+},'manage');

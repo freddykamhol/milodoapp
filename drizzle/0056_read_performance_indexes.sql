@@ -1,0 +1,15 @@
+CREATE INDEX IF NOT EXISTS appointments_state_start_idx ON appointments(state, start_at);
+CREATE INDEX IF NOT EXISTS appointments_customer_state_start_idx ON appointments(customer_id, state, start_at);
+CREATE INDEX IF NOT EXISTS appointment_applications_user_status_appointment_idx ON appointment_applications(user_id, status, appointment_id);
+CREATE INDEX IF NOT EXISTS appointment_applications_appointment_status_idx ON appointment_applications(appointment_id, status);
+CREATE INDEX IF NOT EXISTS appointment_vehicles_vehicle_appointment_idx ON appointment_vehicles(vehicle_id, appointment_id);
+CREATE INDEX IF NOT EXISTS customers_account_user_idx ON customers(account_user_id);
+CREATE INDEX IF NOT EXISTS inventory_items_name_idx ON inventory_items(name);
+CREATE INDEX IF NOT EXISTS inventory_movements_item_created_idx ON inventory_movements(item_id, created_at);
+CREATE INDEX IF NOT EXISTS inventory_inspections_item_performed_idx ON inventory_inspections(item_id, performed_at);
+CREATE INDEX IF NOT EXISTS inventory_defects_created_idx ON inventory_defects(created_at);
+CREATE INDEX IF NOT EXISTS vehicle_defects_created_idx ON vehicle_defects(created_at);
+CREATE INDEX IF NOT EXISTS vehicle_trips_vehicle_start_idx ON vehicle_trips(vehicle_id, start_at);
+CREATE INDEX IF NOT EXISTS notifications_scope_user_created_idx ON notifications(scope, user_id, created_at);
+CREATE INDEX IF NOT EXISTS documents_owner_created_idx ON documents(owner_id, created_at);
+CREATE INDEX IF NOT EXISTS contact_inquiries_deleted_created_idx ON contact_inquiries(deleted_at, created_at);

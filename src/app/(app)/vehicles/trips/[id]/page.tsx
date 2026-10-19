@@ -1,0 +1,10 @@
+import { dateFormatter } from "@/lib/date-format";
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { eq } from "drizzle-orm";
+import { AppShell } from "../../../_components/app-shell";
+import { Card } from "../../../_components/ui";
+import { db } from "@/lib/db";
+import { vehicleTrips, vehicles, appointments, users } from "@/db/schema";
+import { getViewer } from "@/lib/viewer";
+export default async function TripDetail({params}:{params:Promise<{id:string}>}){const viewer=await getViewer();if(!viewer)redirect('/login');if(viewer.role==='KUNDE')redirect('/dashboard');const id=Number((await params).id);const [row]=await db.select({trip:vehicleTrips,vehicle:vehicles,appointment:appointments,creator:users}).from(vehicleTrips).innerJoin(vehicles,eq(vehicleTrips.vehicleId,vehicles.id)).innerJoin(users,eq(vehicleTrips.createdById,users.id)).leftJoin(appointments,eq(vehicleTrips.appointmentId,appointments.id)).where(eq(vehicleTrips.id,id));if(!row)notFound();const date=(value:Date)=>dateFormatter({dateStyle:'medium',timeStyle:'short'}).format(value);return <AppShell title={row.trip.title} subtitle={`Fahrtenbuch - ${row.vehicle.licensePlate}`}><Link href="/vehicles/trips" className="mb-4 inline-block text-sm font-semibold text-[color:var(--accent)]">← Zum Fahrtenbuch</Link><Card title="Fahrtdetails"><div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{[['Fahrzeug',row.vehicle.licensePlate],['KM Start',`${row.trip.kmStart.toLocaleString('de-DE')} km`],['KM Ende',`${row.trip.kmEnd.toLocaleString('de-DE')} km`],['Strecke',`${(row.trip.kmEnd-row.trip.kmStart).toLocaleString('de-DE')} km`],['Beginn',date(row.trip.startAt)],['Ende',date(row.trip.endAt)],['Erfasst von',`${row.creator.firstName} ${row.creator.lastName}`.trim()||row.creator.username]].map(([label,value])=><div key={label}><p className="text-xs text-[color:var(--muted)]">{label}</p><p className="mt-1 text-sm font-semibold">{value}</p></div>)}</div>{row.appointment?<Link className="mt-5 block font-semibold text-[color:var(--accent)]" href={`/appointments/${row.appointment.id}`}>Dienst: {row.appointment.title}</Link>:null}</Card></AppShell>;}

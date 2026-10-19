@@ -1,8 +1,11 @@
 "use client";
 
+import { dateFormatter } from "@/lib/date-format";
+import { confirmAction, notify } from "@/app/_components/feedback";
 import * as React from "react";
 
 import { Badge, Card } from "../../_components/ui";
+import { Pagination, usePagedItems } from "../../_components/pagination";
 
 type Entry = {
   id: number;
@@ -42,7 +45,7 @@ type TimesheetYearSummary = {
 };
 
 function formatMonthTitle(year: number, month: number) {
-  return new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
+  return dateFormatter({ month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
 }
 
 function pad2(n: number) {
@@ -103,6 +106,9 @@ export function HoursClient({
   const [forUserId, setForUserId] = React.useState(initialForUserId);
   const [forUserName, setForUserName] = React.useState(initialForUserName);
   const [members, setMembers] = React.useState<MemberSummary[]>(initialMembers);
+  const [memberSearch, setMemberSearch] = React.useState("");
+  const filteredMembers = React.useMemo(() => members.filter(member => member.username.toLocaleLowerCase("de-DE").includes(memberSearch.trim().toLocaleLowerCase("de-DE"))), [members, memberSearch]);
+  const pagedMembers = usePagedItems(filteredMembers, memberSearch);
   const [timesheets, setTimesheets] = React.useState<TimesheetYearSummary[]>(initialTimesheets);
 
   const today = new Date();
@@ -249,7 +255,7 @@ export function HoursClient({
           <p className="text-sm font-semibold tracking-tight">Bearbeitung freigegeben</p>
           <p className="mt-1 text-xs font-semibold text-[color:var(--muted)]">
             {reopenInfo.actorName} •{" "}
-            {new Intl.DateTimeFormat("de-DE", {
+            {dateFormatter({
               day: "2-digit",
               month: "2-digit",
               year: "numeric",
@@ -303,7 +309,7 @@ export function HoursClient({
             type="button"
             disabled={status === "CLOSED" || isLoading}
             onClick={async () => {
-              if (!confirm("Monat wirklich abschließen? Danach sind Änderungen gesperrt.")) return;
+              if (!(await confirmAction("Monat wirklich abschließen? Danach sind Änderungen gesperrt."))) return;
               try {
                 const res = await fetch("/api/hours/month/close", {
                   method: "POST",
@@ -313,7 +319,7 @@ export function HoursClient({
                 if (!res.ok) throw new Error("close_failed");
                 setStatus("CLOSED");
               } catch {
-                window.alert("Abschluss fehlgeschlagen.");
+                notify("Abschluss fehlgeschlagen.");
               }
             }}
             className="rounded-2xl bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-[0_12px_28px_color-mix(in_oklab,var(--accent)_35%,transparent)] hover:brightness-95 disabled:opacity-60"
@@ -323,7 +329,7 @@ export function HoursClient({
         </div>
       </section>
 
-      <div className="min-w-0 overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+      <div className="responsive-records min-w-0 overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
         <div className="min-w-[820px]">
           <div className={["grid gap-3 bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[color:var(--muted)]", gridCols].join(" ")}>
             <div>Datum</div>
@@ -345,7 +351,7 @@ export function HoursClient({
                 >
                   <div className="text-xs font-semibold text-[color:var(--muted)]">
                     <div className="truncate">
-                      {new Intl.DateTimeFormat("de-DE", {
+                      {dateFormatter({
                         weekday: "short",
                         day: "2-digit",
                         month: "2-digit",
@@ -365,8 +371,8 @@ export function HoursClient({
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{e.einsatzort}</p>
                   </div>
-                  <div className="text-xs font-semibold">{toLocalDatetimeInputValue(start).slice(11)}</div>
-                  <div className="text-xs font-semibold">{toLocalDatetimeInputValue(end).slice(11)}</div>
+                  <div className="text-xs font-semibold"><span className="xl:hidden">Beginn: </span>{toLocalDatetimeInputValue(start).slice(11)}</div>
+                  <div className="text-xs font-semibold"><span className="xl:hidden">Ende: </span>{toLocalDatetimeInputValue(end).slice(11)}</div>
                   <div className="flex justify-end">
                     <button
                       type="button"
@@ -468,7 +474,7 @@ export function HoursClient({
                     await load(year, month);
                     setEdit({ open: false, id: null, start: "", end: "", title: "" });
                   } catch {
-                    window.alert("Speichern fehlgeschlagen.");
+                    notify("Speichern fehlgeschlagen.");
                   }
                 }}
                 className="rounded-2xl bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-[0_12px_28px_color-mix(in_oklab,var(--accent)_35%,transparent)] hover:brightness-95"
@@ -485,7 +491,7 @@ export function HoursClient({
   if (!isAdminView) return personalPanel;
 
   function monthLabel(y: number, m: number) {
-    return new Intl.DateTimeFormat("de-DE", { month: "long" }).format(new Date(y, m - 1, 1));
+    return dateFormatter({ month: "long" }).format(new Date(y, m - 1, 1));
   }
 
   const currentYearSummary = timesheets.find((y) => y.year === maxYear) ?? { year: maxYear, months: [] };
@@ -506,7 +512,8 @@ export function HoursClient({
         </div>
 
         <div className="mt-4 flex flex-col gap-2">
-          {members.map((m) => {
+          <input aria-label="Mitglieder suchen" placeholder="Mitglieder suchen …" value={memberSearch} onChange={event=>setMemberSearch(event.target.value)} className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+          {pagedMembers.items.map((m) => {
             const isSelected = m.id === forUserId;
             const tone = m.isClosedCurrentMonth ? "success" : "danger";
             return (
@@ -546,6 +553,7 @@ export function HoursClient({
             );
           })}
         </div>
+        <Pagination {...pagedMembers} />
       </aside>
 
       <div className="min-w-0">
@@ -772,7 +780,7 @@ export function HoursClient({
                       setReopen({ open: false, year: maxYear, month: maxMonth, note: "" });
                       await loadTimesheets(forUserId, forUserName);
                     } catch {
-                      window.alert("Freigabe fehlgeschlagen.");
+                      notify("Freigabe fehlgeschlagen.");
                     }
                   }}
                   className="rounded-2xl bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-[0_12px_28px_color-mix(in_oklab,var(--accent)_35%,transparent)] hover:brightness-95 disabled:opacity-60"

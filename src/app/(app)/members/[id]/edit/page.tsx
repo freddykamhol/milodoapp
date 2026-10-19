@@ -10,7 +10,7 @@ import { getViewer } from "@/lib/viewer";
 export default async function MemberEditPage({ params }: { params: Promise<{ id: string }> }) {
   const viewer = await getViewer();
   if (!viewer) redirect("/login");
-  if (viewer.role !== "ADMIN") notFound();
+  if (viewer.role !== "ADMIN" && viewer.role !== "VERWALTUNG") notFound();
 
   const { id } = await params;
   const userId = Number(id);
@@ -31,6 +31,8 @@ export default async function MemberEditPage({ params }: { params: Promise<{ id:
           userId={member.id}
           username={member.username}
           role={member.role}
+          isAdmin={viewer.role === "ADMIN"}
+          managementOnly={viewer.role === "VERWALTUNG"}
           initial={{
             firstName: member.firstName ?? "",
             lastName: member.lastName ?? "",
@@ -42,6 +44,7 @@ export default async function MemberEditPage({ params }: { params: Promise<{ id:
             ortErgaenzung: member.ortErgaenzung ?? "",
             email: member.email ?? "",
             telefon: member.telefon ?? "",
+            contractType: member.contractType ?? null,
             hourlyRateQualRdCents: member.hourlyRateQualRdCents ?? null,
             hourlyRateQualAusbCents: member.hourlyRateQualAusbCents ?? null,
           }}

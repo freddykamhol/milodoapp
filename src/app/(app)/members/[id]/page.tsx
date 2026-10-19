@@ -1,3 +1,4 @@
+import { dateFormatter } from "@/lib/date-format";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -9,7 +10,7 @@ import { getViewer } from "@/lib/viewer";
 function formatDate(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
+  return dateFormatter({ day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
 }
 
 export default async function MemberDetailsPage({ params }: { params: Promise<{ id: string }> }) {

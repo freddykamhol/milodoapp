@@ -7,10 +7,15 @@ export type ViewerRole = "ADMIN" | "VERWALTUNG" | "PERSONAL" | "KUNDE";
 
 const baseTabs = [{ label: "Benachrichtigungen", href: "/settings/notifications" }] as const;
 const staffOnlyTabs = [
+  { label: "Kalender", href: "/settings/calendar" },
+  { label: "Rollen", href: "/settings/roles" },
+  { label: "Zuständigkeiten", href: "/settings/responsibilities" },
+  { label: "Dokumente", href: "/settings/documents" },
   { label: "Gebühren", href: "/settings/fees" },
   { label: "Integrationen", href: "/settings/integrations" },
   { label: "Statistiken", href: "/settings/stats" },
 ] as const;
+const managementOnlyTabs = [{ label: "Anfragen", href: "/settings/inquiries" }] as const;
 
 export function SettingsTabs({ viewerRole }: { viewerRole: ViewerRole | null }) {
   const pathname = usePathname();
@@ -18,9 +23,9 @@ export function SettingsTabs({ viewerRole }: { viewerRole: ViewerRole | null }) 
     viewerRole === null
       ? baseTabs
       : viewerRole === "ADMIN" || viewerRole === "VERWALTUNG"
-        ? [...baseTabs, ...staffOnlyTabs]
+        ? [...baseTabs, ...staffOnlyTabs, ...managementOnlyTabs]
         : viewerRole === "PERSONAL"
-          ? [...baseTabs, ...staffOnlyTabs]
+          ? baseTabs
         : baseTabs;
 
   return (

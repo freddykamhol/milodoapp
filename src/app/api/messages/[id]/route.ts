@@ -1,0 +1,8 @@
+import {NextResponse} from "next/server";
+import {getViewer} from "@/lib/viewer";
+import {canSendMessages} from "@/lib/message-types";
+import {messageOutbox} from "@/lib/messages";
+import {MessageValidationError} from "@/lib/message-outbox";
+import {wakeMessageScheduler} from "@/lib/message-scheduler";
+export async function GET(_request:Request,{params}:{params:Promise<{id:string}>}){const viewer=await getViewer();if(!viewer)return NextResponse.json({error:'Nicht angemeldet.'},{status:401});if(!canSendMessages(viewer.role))return NextResponse.json({error:'Keine Berechtigung.'},{status:403});const id=Number((await params).id);if(!Number.isSafeInteger(id)||id<1)return NextResponse.json({error:'Ungültige Nachricht.'},{status:400});const item=messageOutbox.detail(id);return item?NextResponse.json({item},{headers:{'cache-control':'no-store'}}):NextResponse.json({error:'Nicht gefunden.'},{status:404});}
+export async function PATCH(request:Request,{params}:{params:Promise<{id:string}>}){const viewer=await getViewer();if(!viewer)return NextResponse.json({error:'Nicht angemeldet.'},{status:401});if(!canSendMessages(viewer.role))return NextResponse.json({error:'Keine Berechtigung.'},{status:403});const id=Number((await params).id);if(!Number.isSafeInteger(id)||id<1)return NextResponse.json({error:'Ungültige Nachricht.'},{status:400});try{const body=await request.json();if(body.action==='cancel')messageOutbox.cancel(id);else if(body.action==='retry'){messageOutbox.retry(id);wakeMessageScheduler();}else return NextResponse.json({error:'Unbekannte Aktion.'},{status:400});return NextResponse.json({ok:true});}catch(error){return NextResponse.json({error:error instanceof MessageValidationError?error.message:'Aktion nicht möglich.'},{status:409});}}

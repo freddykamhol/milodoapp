@@ -1,5 +1,9 @@
 "use client";
 
+import {Pagination,usePagedItems} from "../../_components/pagination";
+import { usePropState } from "@/app/_components/state";
+import { confirmAction, notify } from "@/app/_components/feedback";
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -26,7 +30,8 @@ const ALL_STATUSES: Array<BlogAdminRow["status"]> = ["DRAFT", "PUBLISHED", "ARCH
 
 export function BlogAdminListClient({ initialRows }: { initialRows: BlogAdminRow[] }) {
   const router = useRouter();
-  const [rows, setRows] = React.useState<BlogAdminRow[]>(initialRows);
+  const [rows, setRows] = usePropState(initialRows);
+  const paged=usePagedItems(rows,"blog");
 
   const [openMenuForId, setOpenMenuForId] = React.useState<number | null>(null);
   const [menuPos, setMenuPos] = React.useState<{ top: number; left: number } | null>(null);
@@ -36,9 +41,7 @@ export function BlogAdminListClient({ initialRows }: { initialRows: BlogAdminRow
   const [statusModal, setStatusModal] = React.useState<{ id: number; current: BlogAdminRow["status"] } | null>(null);
   const [busyId, setBusyId] = React.useState<number | null>(null);
 
-  React.useEffect(() => {
-    setRows(initialRows);
-  }, [initialRows]);
+
 
   React.useEffect(() => {
     if (!openMenuForId) return;
@@ -86,7 +89,7 @@ export function BlogAdminListClient({ initialRows }: { initialRows: BlogAdminRow
   }, [openMenuForId, updateMenuPosition]);
 
   async function deletePost(id: number) {
-    if (!window.confirm("Beitrag wirklich löschen?")) return;
+    if (!(await confirmAction("Beitrag wirklich löschen?"))) return;
     setBusyId(id);
     try {
       const res = await fetch(`/api/blog/posts/${id}`, { method: "DELETE" });
@@ -96,7 +99,7 @@ export function BlogAdminListClient({ initialRows }: { initialRows: BlogAdminRow
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Löschen fehlgeschlagen.";
-      window.alert(msg);
+      notify(msg);
     } finally {
       setBusyId(null);
     }
@@ -116,7 +119,7 @@ export function BlogAdminListClient({ initialRows }: { initialRows: BlogAdminRow
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Status ändern fehlgeschlagen.";
-      window.alert(msg);
+      notify(msg);
     } finally {
       setBusyId(null);
     }
@@ -125,7 +128,7 @@ export function BlogAdminListClient({ initialRows }: { initialRows: BlogAdminRow
   return (
     <div className="divide-y divide-[color:var(--border)] overflow-hidden rounded-2xl border border-[var(--border)] bg-white">
       {rows.length ? (
-        rows.map((r) => (
+        paged.items.map((r) => (
           <Link
             key={r.id}
             href={`/blog/${r.id}`}
@@ -236,7 +239,7 @@ export function BlogAdminListClient({ initialRows }: { initialRows: BlogAdminRow
 
                 <label className="mt-4 block">
                   <span className="text-xs font-semibold text-[color:var(--muted)]">Neuer Status</span>
-                  <select
+                  <AppSelect
                     className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
                     defaultValue=""
                     onChange={(e) => {
@@ -255,7 +258,7 @@ export function BlogAdminListClient({ initialRows }: { initialRows: BlogAdminRow
                         {s}
                       </option>
                     ))}
-                  </select>
+                  </AppSelect>
                 </label>
 
                 <div className="mt-5 flex justify-end gap-2">
@@ -272,6 +275,7 @@ export function BlogAdminListClient({ initialRows }: { initialRows: BlogAdminRow
             document.body,
           )
         : null}
+      <Pagination {...paged}/>
     </div>
   );
 }

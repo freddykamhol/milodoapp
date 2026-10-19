@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { appointmentApplications, appointmentRequirements, appointments, users } from "@/db/schema";
@@ -58,30 +58,19 @@ function eligibleWhere(user: UserRow) {
 }
 
 async function getKpis(user: UserRow) {
-  const reportedOrConfirmed = await db
+  const [counts] = await db
     .select({
-      status: appointmentApplications.status,
-      count: sql<number>`count(*)`.as("count"),
+      open: sql<number>`coalesce(sum(case when (${eligibleWhere(user)}) then 1 else 0 end), 0)`.as("open"),
+      reported: sql<number>`coalesce(sum(case when ${appointmentApplications.status} = 'REPORTED' then 1 else 0 end), 0)`.as("reported"),
+      confirmed: sql<number>`coalesce(sum(case when ${appointmentApplications.status} = 'CONFIRMED' then 1 else 0 end), 0)`.as("confirmed"),
     })
-    .from(appointmentApplications)
-    .where(
-      and(
-        eq(appointmentApplications.userId, user.id),
-        inArray(appointmentApplications.status, ["REPORTED", "CONFIRMED"]),
-      ),
-    )
-    .groupBy(appointmentApplications.status);
-
-  const reported = reportedOrConfirmed.find((r) => r.status === "REPORTED")?.count ?? 0;
-  const confirmed = reportedOrConfirmed.find((r) => r.status === "CONFIRMED")?.count ?? 0;
-
-  const openCount = await db
-    .select({ count: sql<number>`count(*)`.as("count") })
     .from(appointments)
-    .where(eligibleWhere(user))
-    .limit(1);
+    .leftJoin(
+      appointmentApplications,
+      and(eq(appointmentApplications.appointmentId, appointments.id), eq(appointmentApplications.userId, user.id)),
+    );
 
-  return { open: openCount.at(0)?.count ?? 0, reported, confirmed };
+  return counts ?? { open: 0, reported: 0, confirmed: 0 };
 }
 
 export async function GET() {

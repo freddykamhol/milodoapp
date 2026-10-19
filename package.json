@@ -6,14 +6,29 @@
     "node": ">=20.20.2 <21"
   },
   "scripts": {
-    "dev": "next dev --webpack -H localhost",
+    "dev": "node scripts/dev.mjs",
     "predev": "node scripts/build-styles.mjs",
     "dev:server": "node server.js",
-    "build": "next build --webpack",
+    "build": "node --import ./scripts/windows-fs-compat.mjs node_modules/next/dist/bin/next build --webpack",
+    "prebuild": "node scripts/build-styles.mjs",
+    "preview": "node scripts/preview.mjs",
     "start": "next start -H 0.0.0.0",
-    "start:server": "node server.js",
+    "start:server": "node scripts/start-server.mjs",
     "lint": "eslint",
     "test:blog-editor": "node scripts/test-rich-editor.mjs",
+    "test:ui": "node scripts/test-ui-components.mjs",
+    "test:navigation": "node scripts/test-navigation.mjs",
+    "test:performance:ui": "node scripts/test-performance-ui.mjs",
+    "test:messages": "node scripts/test-message-outbox.mjs",
+    "test:uploads": "node scripts/test-message-upload-ui.mjs",
+    "test:defect-appointments:ui": "node scripts/test-defect-appointment-ui.mjs",
+    "test:companies:ui": "node scripts/test-company-ui.mjs",
+    "test:courses:pdf": "node scripts/test-course-pdf.mjs",
+    "benchmark:performance": "node scripts/test-system-ui.mjs --production --benchmark-after",
+    "test:system": "node scripts/test-system-ui.mjs",
+    "test:system:production": "node scripts/test-system-ui.mjs --production",
+    "check:schema": "tsx scripts/check-schema.ts",
+    "check:text": "tsx scripts/audit-data-text.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:push": "drizzle-kit push",
@@ -27,6 +42,7 @@
     "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.19.35",
@@ -41,6 +57,7 @@
     "drizzle-orm": "^0.45.2",
     "next": "16.1.6",
     "nodemailer": "^7.0.3",
+    "pdfkit": "^0.20.2",
     "pdf-lib": "^1.17.1",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
@@ -53,11 +70,13 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
+    "@types/pdfkit": "^0.17.6",
     "@playwright/test": "^1.64.0",
     "babel-plugin-react-compiler": "^1.0.0",
     "drizzle-kit": "^0.31.10",
     "esbuild": "^0.28.2",
     "eslint": "^9.39.3",
-    "eslint-config-next": "16.1.6"
+    "eslint-config-next": "16.1.6",
+    "pdfjs-dist": "^5.6.205"
   }
 }

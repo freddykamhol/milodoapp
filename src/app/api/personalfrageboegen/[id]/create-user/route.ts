@@ -13,6 +13,7 @@ import { getViewer } from "@/lib/viewer";
 import { sendWelcomeEmail } from "@/lib/welcome-email";
 import { ensurePersonalfrageboegenSchema } from "@/lib/personalfrageboegen";
 import { getDataDir } from "@/lib/data-dir";
+import { calculateDocumentExpiry } from "@/lib/document-expiry";
 
 export const runtime = "nodejs";
 
@@ -54,7 +55,7 @@ async function buildInternUsername(firstName: string, lastName: string) {
   return "";
 }
 
-function mapQualRd(qualMed: string | null) {
+function mapQualRd(qualMed: string | null): typeof users.$inferInsert.qualRD {
   if (qualMed === "SANITAETER") return "SAN";
   if (qualMed === "RETTUNGSHELFER") return "RH";
   if (qualMed === "RETTUNGSSANITAETER") return "RS";
@@ -64,7 +65,7 @@ function mapQualRd(qualMed: string | null) {
   return null;
 }
 
-function mapEinsatzort(einsatzfelder: string[]) {
+function mapEinsatzort(einsatzfelder: string[]): typeof users.$inferInsert.einsatzort {
   const hasAusb = einsatzfelder.includes("ERSTE_HILFE_AUSBILDUNG");
   const hasRd = einsatzfelder.includes("RETTUNGSDIENST") || einsatzfelder.includes("SANITAETSDIENST");
   if (hasAusb && hasRd) return "BEIDE";
@@ -83,8 +84,10 @@ function kindToTitle(kind: string) {
   return "Sonstige Dokumente";
 }
 
-function kindToCategory(kind: string): "TRAINING" | "CONTRACT" {
-  if (kind === "FUEHRERSCHEIN" || kind === "PSS" || kind === "ARBEITSMED") return "CONTRACT";
+function kindToCategory(kind: string): "TRAINING" | "DRIVER_LICENSE" | "QUALIFICATION" | "CONTRACT" {
+  if (kind === "FUEHRERSCHEIN" || kind === "PSS") return "DRIVER_LICENSE";
+  if (kind === "ZEUGNIS_MED" || kind === "FUEHRUNGSKRAEFTE" || kind === "AUSBILDER_QUAL") return "QUALIFICATION";
+  if (kind === "ARBEITSMED") return "CONTRACT";
   return "TRAINING";
 }
 
@@ -129,14 +132,14 @@ async function moveSftpFile({
     await client.mkdir(buildUserRemoteDir(basePath, toUsername), true);
     const toRemote = buildUserRemoteFilePath(basePath, toUsername, storedName);
     try {
-      await (client as any).rename(fromRemote, toRemote);
+      await client.rename(fromRemote, toRemote);
       return true;
     } catch {
       const data = (await client.get(fromRemote)) as unknown;
       const buf = Buffer.isBuffer(data) ? data : data instanceof Uint8Array ? Buffer.from(data) : Buffer.from(String(data));
       await client.put(buf, toRemote);
       try {
-        await (client as any).delete(fromRemote);
+        await client.delete(fromRemote);
       } catch {
         // ignore
       }
@@ -206,14 +209,15 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       username,
       passwordHash,
       role: "PERSONAL",
+      contractType: questionnaire.kind === "MINIJOB" ? "GFB" : "HONORAR",
       firstName,
       lastName,
       geb: questionnaire.geb ?? undefined,
       email,
       telefon: String(questionnaire.phone || "").trim() || null,
-      qualRD: mapQualRd(String(questionnaire.qualMed || "").trim() || null) as any,
-      qualAusb: questionnaire.qualEhAusbilder ? ("AUSBILDER" as any) : null,
-      einsatzort: mapEinsatzort(einsatzfelder) as any,
+      qualRD: mapQualRd(String(questionnaire.qualMed || "").trim() || null),
+      qualAusb: questionnaire.qualEhAusbilder ? "AUSBILDER" : null,
+      einsatzort: mapEinsatzort(einsatzfelder),
       strasse: String(questionnaire.street || "").trim() || null,
       hausnummer: String(questionnaire.houseNumber || "").trim() || null,
       plz: String(questionnaire.plz || "").trim() || null,
@@ -252,10 +256,15 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     await db.update(personalQuestionnaireFiles).set({ storageKey: newStorageKey, updatedAt: new Date() }).where(eq(personalQuestionnaireFiles.id, f.id));
 
     const title = kindToTitle(String(f.kind || ""));
+    const category = kindToCategory(String(f.kind || ""));
+    const createdAt = new Date();
     await db.insert(documents).values({
       ownerId: userId,
       title,
-      category: kindToCategory(String(f.kind || "")),
+      category,
+      createdAt,
+      updatedAt: createdAt,
+      expiresAt: await calculateDocumentExpiry(category, createdAt),
       fileName: originalName,
       mimeType: f.mimeType ?? null,
       storageKey: newStorageKey,

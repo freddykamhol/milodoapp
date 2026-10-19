@@ -1,5 +1,6 @@
 "use client";
 
+import { dateFormatter } from "@/lib/date-format";
 import * as React from "react";
 
 import { ResponsiveGridLayout, useContainerWidth, verticalCompactor, type LayoutItem } from "react-grid-layout";
@@ -53,7 +54,7 @@ function percentLabel(n: number) {
 }
 
 function monthTitle(year: number, month: number) {
-  return new Intl.DateTimeFormat("de-DE", { month: "short", year: "2-digit" }).format(new Date(year, month - 1, 1));
+  return dateFormatter({ month: "short", year: "2-digit" }).format(new Date(year, month - 1, 1));
 }
 
 function monthKey(year: number, month: number) {
@@ -471,7 +472,7 @@ export function StatsGridClient({ data }: { data: StatsData }) {
                     className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
                   >
                     <p className="text-sm font-semibold">
-                      {new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" }).format(
+                      {dateFormatter({ weekday: "short", day: "2-digit", month: "2-digit" }).format(
                         new Date(`${r.day}T00:00:00`),
                       )}
                     </p>

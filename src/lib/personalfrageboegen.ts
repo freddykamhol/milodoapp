@@ -2,7 +2,9 @@ import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 
-export async function ensurePersonalfrageboegenSchema() {
+let ready:Promise<void>|undefined;
+export function ensurePersonalfrageboegenSchema(){if(!ready)ready=initializeSchema().catch(error=>{ready=undefined;throw error;});return ready;}
+async function initializeSchema() {
   // This project currently has a flaky drizzle migration runner (TTY/hanging issues).
   // To keep the app functional, we lazily ensure required columns/indexes exist at runtime.
   try {

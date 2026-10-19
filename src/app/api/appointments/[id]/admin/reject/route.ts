@@ -1,3 +1,4 @@
+import { dateFormatter } from "@/lib/date-format";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
@@ -41,7 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const userId = cust?.accountUserId ?? null;
   if (userId) {
-    const when = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(appt.startAt);
+    const when = dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(appt.startAt);
     await db.insert(notifications).values({
       scope: "USER",
       userId,

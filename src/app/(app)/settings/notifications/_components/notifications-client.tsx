@@ -1,5 +1,6 @@
 "use client";
 
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 
 import { Badge, Card } from "../../../_components/ui";
@@ -39,25 +40,11 @@ function CircleToggle({
   label: string;
 }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={[
-        "grid h-6 w-6 place-items-center rounded-full border transition",
-        checked
-          ? "border-transparent bg-[color:var(--accent)] text-white shadow-[0_12px_28px_color-mix(in_oklab,var(--accent)_30%,transparent)]"
-          : "border-[var(--border)] bg-[var(--surface)] text-transparent hover:bg-[var(--surface-2)]",
-        disabled ? "opacity-60" : "",
-      ].join(" ")}
-    >
-      <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4">
-        <path d="M4.5 10.5 8.2 14.2 15.8 6.6" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
+    <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
+      <input type="checkbox" checked={checked} disabled={disabled}
+        aria-label={label} onChange={event => onChange(event.target.checked)} />
+      <span>{checked ? "Aktiviert" : "Deaktiviert"}</span>
+    </label>
   );
 }
 
@@ -102,8 +89,8 @@ export function NotificationsClient({ initial, definitions }: { initial: PrefRow
             </div>
 
             <div className="mt-3 overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
-              <div className="min-w-[760px]">
-                <div className="grid grid-cols-[1fr_180px_220px] gap-3 bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[color:var(--muted)]">
+              <div className="min-w-0">
+                <div className="hidden grid-cols-[minmax(0,1fr)_140px_180px] gap-3 bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[color:var(--muted)] xl:grid">
                   <div>Ereignis</div>
                   <div className="text-center"></div>
                   <div>Option</div>
@@ -116,14 +103,14 @@ export function NotificationsClient({ initial, definitions }: { initial: PrefRow
                     return (
                       <li
                         key={r.key}
-                        className="grid grid-cols-[1fr_180px_220px] items-center gap-3 px-4 py-3"
+                        className="grid grid-cols-1 items-center gap-3 px-4 py-3 xl:grid-cols-[minmax(0,1fr)_140px_180px]"
                       >
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">{r.label}</p>
-                          <p className="mt-1 truncate text-xs text-[color:var(--muted)]">{r.description}</p>
+                          <p className="break-words text-sm font-semibold">{r.label}</p>
+                          <p className="mt-1 break-words text-xs text-[color:var(--muted)]">{r.description}</p>
                         </div>
 
-                        <div className="flex items-center justify-center gap-3">
+                        <div className="flex items-center gap-3 xl:justify-center">
                           <CircleToggle
                             checked={p.enabled}
                             disabled={isSaving}
@@ -141,7 +128,8 @@ export function NotificationsClient({ initial, definitions }: { initial: PrefRow
                               <label className="flex items-center gap-2 text-xs font-semibold text-[color:var(--muted)]">
                                 Tage vorher
                               </label>
-                              <select
+                              <AppSelect
+                                aria-label={`Tage vorher: ${r.label}`}
                                 className="h-9 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-2 text-xs font-semibold outline-none focus:border-[color:var(--ring)] disabled:opacity-60"
                                 value={String(p.reminderDaysBefore ?? 1)}
                                 disabled={isSaving || daysDisabled}
@@ -162,7 +150,7 @@ export function NotificationsClient({ initial, definitions }: { initial: PrefRow
                                     </option>
                                   );
                                 })}
-                              </select>
+                              </AppSelect>
                             </>
                           ) : (
                             <span className="text-xs text-[color:var(--muted)]">—</span>

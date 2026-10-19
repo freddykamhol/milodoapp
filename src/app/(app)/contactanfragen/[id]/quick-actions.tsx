@@ -1,5 +1,7 @@
 "use client";
 
+import { useHydrated } from "@/app/_components/state";
+import { confirmAction } from "@/app/_components/feedback";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
@@ -11,7 +13,7 @@ function norm(value: string) {
 export default function ContactInquiryActions(props: { inquiryId: number; email: string; ip: string; mode: string }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
-  const [mounted, setMounted] = React.useState(false);
+  const mounted = useHydrated();
   const [forwardOpen, setForwardOpen] = React.useState(false);
   const [forwardTo, setForwardTo] = React.useState("");
   const [forwardError, setForwardError] = React.useState<string | null>(null);
@@ -20,9 +22,7 @@ export default function ContactInquiryActions(props: { inquiryId: number; email:
   const [replyMessage, setReplyMessage] = React.useState("Hallo,\n\nvielen Dank für deine Anfrage.\n\n—\nMilodo Medical");
   const [replyError, setReplyError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
+
 
   React.useEffect(() => {
     if (!mounted) return;
@@ -37,7 +37,7 @@ export default function ContactInquiryActions(props: { inquiryId: number; email:
   }, [mounted, forwardOpen, replyOpen]);
 
   async function doDelete() {
-    if (!confirm("Kontaktanfrage wirklich löschen?")) return;
+    if (!(await confirmAction("Kontaktanfrage wirklich löschen?"))) return;
     setBusy("delete");
     try {
       const res = await fetch(`/api/contact-inquiries/${props.inquiryId}`, { method: "DELETE" });
@@ -51,7 +51,7 @@ export default function ContactInquiryActions(props: { inquiryId: number; email:
 
   async function doBlockIp() {
     if (!props.ip) return;
-    if (!confirm(`IP wirklich blockieren?\n\n${props.ip}`)) return;
+    if (!(await confirmAction(`IP wirklich blockieren?\n\n${props.ip}`))) return;
     setBusy("block");
     try {
       const res = await fetch(`/api/contact-inquiries/${props.inquiryId}/block-ip`, {

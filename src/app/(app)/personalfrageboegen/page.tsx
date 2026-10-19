@@ -31,10 +31,10 @@ export default async function PersonalfrageboegenPage() {
 
   await ensurePersonalfrageboegenSchema();
 
-  let rows: Array<typeof personalQuestionnaires.$inferSelect> = [];
+  let rows: Array<Pick<typeof personalQuestionnaires.$inferSelect,"id"|"firstName"|"lastName"|"email"|"status"|"createdAt">> = [];
   try {
     rows = await db
-      .select()
+      .select({id:personalQuestionnaires.id,firstName:personalQuestionnaires.firstName,lastName:personalQuestionnaires.lastName,email:personalQuestionnaires.email,status:personalQuestionnaires.status,createdAt:personalQuestionnaires.createdAt})
       .from(personalQuestionnaires)
       .orderBy(desc(personalQuestionnaires.createdAt))
       .limit(250);
@@ -43,7 +43,7 @@ export default async function PersonalfrageboegenPage() {
     if (msg.includes("created_user_id")) {
       await ensurePersonalfrageboegenSchema();
       rows = await db
-        .select()
+        .select({id:personalQuestionnaires.id,firstName:personalQuestionnaires.firstName,lastName:personalQuestionnaires.lastName,email:personalQuestionnaires.email,status:personalQuestionnaires.status,createdAt:personalQuestionnaires.createdAt})
         .from(personalQuestionnaires)
         .orderBy(desc(personalQuestionnaires.createdAt))
         .limit(250);

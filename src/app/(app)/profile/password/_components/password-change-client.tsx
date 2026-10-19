@@ -1,5 +1,6 @@
 "use client";
 
+import { notify } from "@/app/_components/feedback";
 import * as React from "react";
 
 const inputClass =
@@ -11,8 +12,8 @@ export function PasswordChangeClient() {
   const [busy, setBusy] = React.useState(false);
 
   async function submit() {
-    if (pw1.length < 8) return window.alert("Passwort muss mindestens 8 Zeichen haben.");
-    if (pw1 !== pw2) return window.alert("Passwörter stimmen nicht überein.");
+    if (pw1.length < 8) return notify("Passwort muss mindestens 8 Zeichen haben.");
+    if (pw1 !== pw2) return notify("Passwörter stimmen nicht überein.");
     setBusy(true);
     try {
       const res = await fetch("/api/profile/password", {
@@ -22,12 +23,12 @@ export function PasswordChangeClient() {
       });
       const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
       if (!res.ok || !json?.ok) throw new Error(json?.error || "change_failed");
-      window.alert("Passwort geändert.");
+      notify("Passwort geändert.");
       setPw1("");
       setPw2("");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Ändern fehlgeschlagen.";
-      window.alert(msg);
+      notify(msg);
     } finally {
       setBusy(false);
     }

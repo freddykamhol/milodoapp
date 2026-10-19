@@ -1,9 +1,8 @@
 "use client";
 
+import { notify } from "@/app/_components/feedback";
 import * as React from "react";
-
-const inputClass =
-  "mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]";
+import {FileUpload} from "@/app/_components/file-upload";
 
 type Result =
   | { idx: number; ok: true; id: number; username: string; emailSent: boolean }
@@ -16,7 +15,7 @@ export function MembersImportClient() {
   const [results, setResults] = React.useState<Result[] | null>(null);
 
   async function submit() {
-    if (!file) return window.alert("Bitte CSV-Datei auswählen.");
+    if (!file) return notify("Bitte CSV-Datei auswählen.");
     setBusy(true);
     setSummary(null);
     setResults(null);
@@ -34,7 +33,7 @@ export function MembersImportClient() {
       setResults(json.results ?? []);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Import fehlgeschlagen.";
-      window.alert(msg);
+      notify(msg);
     } finally {
       setBusy(false);
     }
@@ -65,15 +64,7 @@ export function MembersImportClient() {
         </p>
       </div>
 
-      <label className="block">
-        <span className="text-xs font-semibold text-[color:var(--muted)]">CSV Datei</span>
-        <input
-          className={inputClass}
-          type="file"
-          accept=".csv,text/csv"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        />
-      </label>
+      <FileUpload label="CSV Datei" accept=".csv,text/csv" multiple={false} files={file?[file]:[]} onChange={files=>setFile(files[0]??null)} disabled={busy}/>
 
       <div className="flex justify-end">
         <button

@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmAction, notify } from "@/app/_components/feedback";
 import * as React from "react";
 
 import { Badge, Card } from "../../../_components/ui";
@@ -85,27 +86,10 @@ function CircleToggle({
   onChange: (next: boolean) => void;
   label: string;
 }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={[
-        "grid h-6 w-6 place-items-center rounded-full border transition",
-        checked
-          ? "border-transparent bg-[color:var(--accent)] text-white shadow-[0_12px_28px_color-mix(in_oklab,var(--accent)_30%,transparent)]"
-          : "border-[var(--border)] bg-[var(--surface)] text-transparent hover:bg-[var(--surface-2)]",
-        disabled ? "opacity-60" : "",
-      ].join(" ")}
-    >
-      <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4">
-        <path d="M4.5 10.5 8.2 14.2 15.8 6.6" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
-  );
+  return <label className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center">
+    <input type="checkbox" checked={checked} disabled={disabled} aria-label={label}
+      onChange={event => onChange(event.target.checked)} />
+  </label>;
 }
 
 export function IntegrationsClient({
@@ -253,7 +237,7 @@ export function IntegrationsClient({
   }
 
   async function deleteTelegramChat(id: number) {
-    if (!confirm("Chat wirklich löschen?")) return;
+    if (!(await confirmAction("Chat wirklich löschen?"))) return;
     setBusy(`telegram-del-${id}`);
     try {
       const res = await fetch(`/api/settings/integrations/telegram/chats/${id}`, { method: "DELETE" });
@@ -302,7 +286,7 @@ export function IntegrationsClient({
   }
 
   async function deleteProwlKey(id: number) {
-    if (!confirm("Code wirklich löschen?")) return;
+    if (!(await confirmAction("Code wirklich löschen?"))) return;
     setBusy(`prowl-del-${id}`);
     try {
       const res = await fetch(`/api/settings/integrations/prowl/keys/${id}`, { method: "DELETE" });
@@ -320,11 +304,11 @@ export function IntegrationsClient({
       const res = await fn();
       const data = (await res.json().catch(() => null)) as { message?: string } | null;
       if (!res.ok) {
-        window.alert(data?.message || "Test fehlgeschlagen.");
+        notify(data?.message || "Test fehlgeschlagen.");
         setTestState({ key, ok: false });
         return;
       }
-      if (data?.message) window.alert(data.message);
+      if (data?.message) notify(data.message);
       setTestState({ key, ok: true });
       window.setTimeout(() => setTestState(null), 1800);
     } finally {
@@ -827,7 +811,7 @@ export function IntegrationsClient({
       ) : null}
 
       <Card title="Prowl" description="Mehrere Codes möglich (nur für deinen User).">
-        <div className="overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+        <div className="responsive-records overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
           <div className="min-w-[760px]">
             <div className="grid grid-cols-[80px_1fr_260px_220px] gap-3 bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[color:var(--muted)]">
               <div className="text-center">Aktiv</div>

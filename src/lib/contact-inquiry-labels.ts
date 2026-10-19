@@ -27,8 +27,9 @@ const FIELD_LABELS: Record<string, string> = {
 const MODE_LABELS: Record<string, string> = {
   kontakt: "Allgemeine Kontaktanfrage",
   eh: "Erste-Hilfe-Ausbildung",
+  notfall: "Notfalltraining",
   sanitaet: "Sanitätsdienst",
-  boerse: "Personalbörse",
+  boerse: "Personalvermittlung",
 };
 
 export function requestTypeLabel(mode: string) {

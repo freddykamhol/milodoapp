@@ -58,13 +58,14 @@ export function UserMenu({ displayName, roleLabel, initials }: UserMenuProps) {
   }, []);
 
   React.useEffect(() => {
+    if (!open) return;
     const initial = window.setTimeout(() => updateRemaining(), 0);
     const t = window.setInterval(() => updateRemaining(), 1000);
     return () => {
       window.clearTimeout(initial);
       window.clearInterval(t);
     };
-  }, [updateRemaining]);
+  }, [open, updateRemaining]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -86,6 +87,10 @@ export function UserMenu({ displayName, roleLabel, initials }: UserMenuProps) {
 
   React.useEffect(() => {
     if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") { event.preventDefault(); setOpen(false); chipRef.current?.focus(); }
+    }
+    window.addEventListener("keydown", onKeyDown);
     function onPointerDown(event: MouseEvent) {
       const anchor = chipRef.current;
       const menu = menuRef.current;
@@ -93,7 +98,7 @@ export function UserMenu({ displayName, roleLabel, initials }: UserMenuProps) {
       setOpen(false);
     }
     window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
+    return () => { window.removeEventListener("pointerdown", onPointerDown); window.removeEventListener("keydown", onKeyDown); };
   }, [open]);
 
   const progress = remainingMs / IDLE_MS;
@@ -120,11 +125,10 @@ export function UserMenu({ displayName, roleLabel, initials }: UserMenuProps) {
       </button>
 
       <div
-        className="relative h-10 w-10 rounded-2xl p-[2px] shadow-[0_10px_24px_rgba(11,18,32,0.06)]"
+        className="relative h-12 w-12 shrink-0 rounded-2xl p-[2px] shadow-[0_10px_24px_rgba(11,18,32,0.06)]"
         style={{
           background: `conic-gradient(from -90deg, rgba(239,68,68,0.95) 0deg ${ringDeg}deg, rgba(239,68,68,0.16) ${ringDeg}deg 360deg)`,
         }}
-        aria-hidden="true"
       >
         <button
           type="button"

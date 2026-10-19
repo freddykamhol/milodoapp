@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { customers, users } from "@/db/schema";
 import { getViewer } from "@/lib/viewer";
+import { hashPassword } from "@/lib/password";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const viewer = await getViewer();
   if (!viewer) return NextResponse.json({ ok: false, error: "no_viewer" }, { status: 401 });
-  if (viewer.role !== "ADMIN") return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  if (viewer.role !== "ADMIN" && viewer.role !== "VERWALTUNG") return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 
   const { id } = await params;
   const userId = Number(id);
@@ -37,6 +38,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });
+  if (viewer.role === "VERWALTUNG" && Object.keys(body).some((key) => key !== "contractType")) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
 
   const norm = (v: unknown) => String(v ?? "").trim();
   const normEmail = (v: unknown) => norm(v).toLowerCase();
@@ -49,6 +53,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const nextUser: Partial<typeof users.$inferInsert> = {
     updatedAt: new Date(),
   };
+
+  if ("contractType" in body) {
+    if (body.contractType !== "GFB" && body.contractType !== "HONORAR") return NextResponse.json({ ok: false, error: "invalid_contract_type" }, { status: 400 });
+    nextUser.contractType = body.contractType;
+  }
+
+  if ("password" in body) {
+    if (viewer.role !== "ADMIN") return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+    const password = String(body.password ?? "");
+    if (password.length < 8) return NextResponse.json({ ok: false, error: "password_too_short" }, { status: 400 });
+    nextUser.passwordHash = hashPassword(password);
+  }
 
   if ("firstName" in body) nextUser.firstName = norm(body.firstName);
   if ("lastName" in body) nextUser.lastName = norm(body.lastName);

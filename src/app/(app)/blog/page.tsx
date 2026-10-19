@@ -20,9 +20,9 @@ export default async function BlogAdminPage() {
   if (!isAdminOrVerwaltung(viewer.role)) notFound();
 
   await ensureBlogSchema();
-  let rows: Array<typeof blogPosts.$inferSelect> = [];
+  let rows: Array<Pick<typeof blogPosts.$inferSelect,"id"|"title"|"category"|"slug"|"status"|"updatedAt">> = [];
   try {
-    rows = await db.select().from(blogPosts).orderBy(desc(blogPosts.updatedAt)).limit(300);
+    rows = await db.select({id:blogPosts.id,title:blogPosts.title,category:blogPosts.category,slug:blogPosts.slug,status:blogPosts.status,updatedAt:blogPosts.updatedAt}).from(blogPosts).orderBy(desc(blogPosts.updatedAt)).limit(300);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
     if (!msg.includes("no such table")) throw e;

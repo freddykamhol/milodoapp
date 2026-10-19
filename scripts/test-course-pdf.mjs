@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {build} from 'esbuild';
+import {PDFDocument} from 'pdf-lib';
+import {createCanvas,DOMMatrix,ImageData,Path2D} from '@napi-rs/canvas';
+globalThis.DOMMatrix??=DOMMatrix;globalThis.ImageData??=ImageData;globalThis.Path2D??=Path2D;
+const out=path.resolve('artifacts/courses');await fs.mkdir(out,{recursive:true});
+await build({entryPoints:['src/lib/course-pdf.ts'],bundle:true,platform:'node',format:'esm',packages:'external',outfile:path.join(out,'pdf-test.mjs')});
+const {buildParticipantList,buildCourseCertificates}=await import(pathToFileURL(path.join(out,'pdf-test.mjs')).href+'?t='+Date.now());
+const data={id:88,title:'Erste Hilfe Kurs - 088/26',courseType:'EH_AUSBILDUNG',participantLimit:80,startAt:'2026-10-20T06:00:00Z',endAt:'2026-10-20T13:30:00Z',location:'Eigene Ausbildungsräume',customerName:'Müller & Söhne',notes:'',state:'OPEN',approved:true,registrationEnabled:false,registrationExpiresAt:null,canManage:true,canOperate:true,participants:Array.from({length:65},(_,i)=>({id:i+1,firstName:i===0?'Änne':i===1?'Žofie':'Abwesend'+i,lastName:i===0?'Müller':i===1?'Dvořáková':'Testperson',dateOfBirth:'1990-02-14',present:i<2,source:'INTERNAL'}))};
+const list=await buildParticipantList(data);await fs.writeFile(path.join(out,'Teilnehmerliste.pdf'),list);assert.ok((await PDFDocument.load(list)).getPageCount()>=3);
+const zip=await buildCourseCertificates(data);await fs.writeFile(path.join(out,'Bescheinigungen.zip'),zip);let offset=0;const entries=[];while(zip.readUInt32LE(offset)===0x04034b50){const size=zip.readUInt32LE(offset+18),nameLength=zip.readUInt16LE(offset+26),extra=zip.readUInt16LE(offset+28),name=zip.subarray(offset+30,offset+30+nameLength).toString('utf8'),start=offset+30+nameLength+extra;entries.push({name,bytes:zip.subarray(start,start+size)});offset=start+size;}assert.equal(entries.length,3);assert.equal(new Set(entries.map(item=>item.name)).size,3);for(const entry of entries)assert.ok(entry.name.endsWith('.pdf')&&!entry.name.includes('/'));
+const combined=entries.find(entry=>entry.name==='Alle-Teilnahmebescheinigungen.pdf');assert.equal((await PDFDocument.load(combined.bytes)).getPageCount(),2);assert.equal((await PDFDocument.load(entries[0].bytes)).getPageCount(),1);await fs.writeFile(path.join(out,'Alle-Teilnahmebescheinigungen.pdf'),combined.bytes);await fs.writeFile(path.join(out,'Einzelbescheinigung.pdf'),entries[0].bytes);
+const pdfjs=await import('pdfjs-dist/legacy/build/pdf.mjs');
+for(const [name,bytes] of [['Teilnehmerliste',list],['Alle-Teilnahmebescheinigungen',combined.bytes]]){const doc=await pdfjs.getDocument({data:new Uint8Array(bytes),disableFontFace:true}).promise;let content='';for(let i=1;i<=doc.numPages;i++){const page=await doc.getPage(i),viewport=page.getViewport({scale:1.3}),canvas=createCanvas(Math.ceil(viewport.width),Math.ceil(viewport.height));await page.render({canvasContext:canvas.getContext('2d'),viewport,canvas}).promise;await fs.writeFile(path.join(out,name+'-'+i+'.png'),canvas.toBuffer('image/png'));content+=(await page.getTextContent()).items.map(item=>item.str??'').join(' ');}if(name==='Teilnehmerliste'){assert.ok(content.includes('Anwesend'));assert.ok(content.includes('Nicht anwesend'));assert.ok(content.includes('Abwesend64'));}else{assert.ok(content.includes('Änne'));assert.ok(content.includes('Dvořáková'));assert.ok(!content.includes('Abwesend'));assert.ok(content.includes('405 Minuten Unterricht'));}await doc.destroy();}
+console.log('PASS: paginated participant PDF, status visibility, Unicode names, attendance-only individual/combined certificates, valid ZIP entries and rendered PDF previews');

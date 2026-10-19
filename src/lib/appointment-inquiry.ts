@@ -1,13 +1,17 @@
-import { and, eq } from "drizzle-orm";
+import { dateFormatter } from "@/lib/date-format";
+import { and, eq, ne } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { buildEmailHtml } from "@/lib/email";
 import { sendSmtpMail } from "@/lib/smtp-mail";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { getAppUrl } from "@/lib/app-url";
+import { isInquiryServiceEnabled } from "@/lib/inquiry-service-types";
+import { matchesAppointmentRequirements } from "@/lib/qual-hierarchy";
 import {
   appointmentRequirements,
   notificationPrefs,
+  notifications,
   prowlKeys,
   users,
 } from "@/db/schema";
@@ -33,14 +37,14 @@ function buildRequirementsLabel(reqs: Array<{ minCount: number; value: string }>
 }
 
 function formatInquiryTimeRange(startAt: Date, endAt: Date | null) {
-  const fmt = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" });
+  const fmt = dateFormatter({ dateStyle: "medium", timeStyle: "short" });
   if (!endAt) return fmt.format(startAt);
-  const timeFmt = new Intl.DateTimeFormat("de-DE", { timeStyle: "short" });
+  const timeFmt = dateFormatter({ timeStyle: "short" });
   return `${fmt.format(startAt)}–${timeFmt.format(endAt)}`;
 }
 
 function serviceTypeLabel(value: string) {
-  if (value === "RD_BOERSE") return "Rettungsdienst-Börse";
+  if (value === "RD_BOERSE") return "RD-Personalvermittlung";
   if (value === "SANITATSDIENST") return "Sanitätsdienst";
   return "Erste Hilfe";
 }
@@ -92,6 +96,9 @@ async function sendInquiryTelegram({
 
 async function sendInquiryEmail({
   prefKey,
+  bereich,
+  dienstart,
+  requirements,
   appointmentId,
   title,
   startAt,
@@ -100,6 +107,9 @@ async function sendInquiryEmail({
   sections,
 }: {
   prefKey: "URGENT_REQUESTS" | "REQUESTS_GENERAL";
+  bereich: "RD_BOERSE" | "SANITATSDIENST" | "ERSTE_HILFE";
+  dienstart: string | null;
+  requirements: Array<{ kind: string; value: string }>;
   appointmentId: number;
   title: string;
   startAt: Date;
@@ -113,12 +123,16 @@ async function sendInquiryEmail({
   const preheader = `${title} • ${when}`;
 
   const targetRows = await db
-    .select({ email: users.email })
+    .select({ email: users.email, inquiryServiceTypes: users.inquiryServiceTypes, role: users.role, qualRD: users.qualRD, qualAusb: users.qualAusb })
     .from(notificationPrefs)
     .innerJoin(users, eq(notificationPrefs.userId, users.id))
     .where(and(eq(notificationPrefs.key, prefKey), eq(notificationPrefs.emailEnabled, true)));
 
-  const emails = Array.from(new Set(targetRows.map((r) => String(r.email || "").trim()).filter(Boolean)));
+  const emails = Array.from(new Set(targetRows
+    .filter((row) => isInquiryServiceEnabled(row.inquiryServiceTypes, bereich, dienstart)
+      && matchesAppointmentRequirements(row, requirements))
+    .map((r) => String(r.email || "").trim())
+    .filter(Boolean)));
   for (const to of emails) {
     const text = `${subject.replace(/^\[Milodo\]\s*/, "")}\n\n${sections.map((s) => `${s.label}: ${s.value}`).filter(Boolean).join("\n")}\n\nDirekt zum Dienst: ${url}`;
     const html = buildEmailHtml({
@@ -142,12 +156,18 @@ async function sendInquiryEmail({
 
 async function sendInquiryProwl({
   prefKey,
+  bereich,
+  dienstart,
+  requirements,
   title,
   startAt,
   endAt,
   reqLabel,
 }: {
   prefKey: "URGENT_REQUESTS" | "REQUESTS_GENERAL";
+  bereich: "RD_BOERSE" | "SANITATSDIENST" | "ERSTE_HILFE";
+  dienstart: string | null;
+  requirements: Array<{ kind: string; value: string }>;
   title: string;
   startAt: Date;
   endAt: Date | null;
@@ -158,8 +178,9 @@ async function sendInquiryProwl({
   const description = `${title} • ${when}\n${reqLabel}`;
 
   const keys = await db
-    .select({ apiKey: prowlKeys.apiKey })
+    .select({ apiKey: prowlKeys.apiKey, inquiryServiceTypes: users.inquiryServiceTypes, role: users.role, qualRD: users.qualRD, qualAusb: users.qualAusb })
     .from(prowlKeys)
+    .innerJoin(users, eq(prowlKeys.userId, users.id))
     .innerJoin(notificationPrefs, eq(notificationPrefs.userId, prowlKeys.userId))
     .where(
       and(
@@ -167,11 +188,11 @@ async function sendInquiryProwl({
         eq(notificationPrefs.key, prefKey),
         eq(notificationPrefs.emailEnabled, true),
       ),
-    )
-    .limit(25);
+    );
 
   await Promise.all(
-    keys.map(async (k) => {
+    keys.filter((key) => isInquiryServiceEnabled(key.inquiryServiceTypes, bereich, dienstart)
+      && matchesAppointmentRequirements(key, requirements)).slice(0, 25).map(async (k) => {
       const key = String(k.apiKey || "").trim();
       if (!key) return;
       const res = await fetch("https://api.prowlapp.com/publicapi/add", {
@@ -203,6 +224,45 @@ export type AppointmentInquiryResult = {
   anyOk: boolean;
 };
 
+export async function createAppointmentInquiryNotifications(
+  appointmentId: number,
+  kind: "URGENT_REQUESTS" | "REQUESTS_GENERAL",
+) {
+  const appointment = await db.query.appointments.findFirst({
+    where: (table, { eq: equals }) => equals(table.id, appointmentId),
+    columns: { id: true, title: true, startAt: true, bereich: true, dienstart: true },
+  });
+  if (!appointment) return;
+
+  const recipients = await db.select({
+    id: users.id,
+    inquiryServiceTypes: users.inquiryServiceTypes,
+    role: users.role,
+    qualRD: users.qualRD,
+    qualAusb: users.qualAusb,
+  })
+    .from(users)
+    .where(ne(users.role, "KUNDE"));
+  const requirements = await db.select({ kind: appointmentRequirements.kind, value: appointmentRequirements.value })
+    .from(appointmentRequirements)
+    .where(eq(appointmentRequirements.appointmentId, appointmentId));
+  const eligible = recipients.filter((user) => isInquiryServiceEnabled(
+    user.inquiryServiceTypes,
+    appointment.bereich,
+    appointment.dienstart,
+  ) && matchesAppointmentRequirements(user, requirements));
+  if (!eligible.length) return;
+
+  await db.insert(notifications).values(eligible.map((user) => ({
+    scope: "USER" as const,
+    userId: user.id,
+    kind,
+    title: kind === "URGENT_REQUESTS" ? "AKUTE ABFRAGE" : "Dienstabfrage",
+    body: `${appointment.title}\n${dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt)}`,
+    href: `/appointments/${appointment.id}`,
+  })));
+}
+
 export async function triggerAppointmentInquiry(
   appointmentId: number,
   kind: "URGENT_REQUESTS" | "REQUESTS_GENERAL",
@@ -215,7 +275,7 @@ export async function triggerAppointmentInquiry(
   if (!appointment) throw new Error("not_found");
 
   const reqs = await db
-    .select({ minCount: appointmentRequirements.minCount, value: appointmentRequirements.value })
+    .select({ minCount: appointmentRequirements.minCount, kind: appointmentRequirements.kind, value: appointmentRequirements.value })
     .from(appointmentRequirements)
     .where(eq(appointmentRequirements.appointmentId, appointmentId));
 
@@ -250,6 +310,9 @@ export async function triggerAppointmentInquiry(
 
   const base = {
     appointmentId,
+    bereich: appointment.bereich,
+    dienstart: appointment.dienstart ?? null,
+    requirements: reqs.map(({ kind: requirementKind, value }) => ({ kind: requirementKind, value })),
     title: appointment.title,
     startAt: appointment.startAt,
     endAt: appointment.endAt ?? null,

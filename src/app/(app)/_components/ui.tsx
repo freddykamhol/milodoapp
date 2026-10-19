@@ -14,24 +14,24 @@ export function Card({ title, description, actions, children, className }: CardP
   return (
     <section
       className={[
-        "rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-soft)]",
+        "min-w-0 rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-soft)]",
         className,
       ]
         .filter(Boolean)
         .join(" ")}
     >
       {title ? (
-        <header className="flex items-start justify-between gap-3 px-5 pt-5">
+        <header className="flex flex-wrap items-start justify-between gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold tracking-tight">{title}</h2>
+            <h2 className="break-words text-sm font-semibold tracking-tight">{title}</h2>
             {description ? (
               <p className="mt-1 text-xs text-[color:var(--muted)]">{description}</p>
             ) : null}
           </div>
-          {actions ? <div className="shrink-0">{actions}</div> : null}
+          {actions && title !== "Kursdaten" ? <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div> : null}
         </header>
       ) : null}
-      <div className={title ? "px-5 pb-5 pt-4" : "p-5"}>{children}</div>
+      <div className={title ? "min-w-0 px-4 pb-4 pt-4 sm:px-5 sm:pb-5" : "min-w-0 p-4 sm:p-5"}>{children}</div>
     </section>
   );
 }
@@ -81,7 +81,7 @@ export function Kpi({
   tone?: Exclude<BadgeTone, "muted">;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3">
+    <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
       <div>
         <p className="text-xs font-semibold text-[color:var(--muted)]">{label}</p>
         <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>

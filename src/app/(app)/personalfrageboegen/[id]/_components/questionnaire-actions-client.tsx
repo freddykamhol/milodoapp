@@ -85,8 +85,9 @@ export function QuestionnaireActionsClient({
       const json = (await res.json()) as
         | { ok: true; id: number; username: string; emailSent: boolean }
         | { ok: false; error: string; username?: string };
-      if (!res.ok || !json.ok) throw new Error((json as any).error || "create_failed");
-      setCreated({ id: (json as any).id, username: (json as any).username, emailSent: Boolean((json as any).emailSent) });
+      if (!json.ok) throw new Error(json.error || "create_failed");
+      if (!res.ok) throw new Error("create_failed");
+      setCreated({ id: json.id, username: json.username, emailSent: json.emailSent });
     } catch (e) {
       setError(e instanceof Error ? e.message : "create_failed");
     } finally {

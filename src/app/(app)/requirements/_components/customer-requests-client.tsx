@@ -1,5 +1,7 @@
 "use client";
 
+import { dateFormatter } from "@/lib/date-format";
+import { notify, requestText } from "@/app/_components/feedback";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,9 +20,9 @@ type Row = {
 };
 
 function formatWhen(startAt: Date, endAt: Date | null) {
-  const fmt = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" });
+  const fmt = dateFormatter({ dateStyle: "medium", timeStyle: "short" });
   if (!endAt) return fmt.format(startAt);
-  const timeFmt = new Intl.DateTimeFormat("de-DE", { timeStyle: "short" });
+  const timeFmt = dateFormatter({ timeStyle: "short" });
   return `${fmt.format(startAt)}–${timeFmt.format(endAt)}`;
 }
 
@@ -36,14 +38,14 @@ export function CustomerRequestsClient({ initial }: { initial: Row[] }) {
       if (!res.ok || !json?.ok) throw new Error("approve_failed");
       router.refresh();
     } catch {
-      window.alert("Freigeben fehlgeschlagen.");
+      notify("Freigeben fehlgeschlagen.");
     } finally {
       setBusyId(null);
     }
   }
 
   async function reject(appointmentId: number) {
-    const note = window.prompt("Bemerkung zur Ablehnung (optional):", "") ?? "";
+    const note = (await requestText("Bemerkung zur Ablehnung (optional):", "")) ?? "";
     setBusyId(appointmentId);
     try {
       const res = await fetch(`/api/appointments/${appointmentId}/admin/reject`, {
@@ -55,7 +57,7 @@ export function CustomerRequestsClient({ initial }: { initial: Row[] }) {
       if (!res.ok || !json?.ok) throw new Error("reject_failed");
       router.refresh();
     } catch {
-      window.alert("Ablehnen fehlgeschlagen.");
+      notify("Ablehnen fehlgeschlagen.");
     } finally {
       setBusyId(null);
     }

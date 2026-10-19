@@ -6,6 +6,7 @@ import { sendContactInquiryEmail } from "@/lib/contact-inquiry-email";
 import { ensureContactInquiriesTable } from "@/lib/contact-inquiries";
 import { isIpBlocked } from "@/lib/ip-blocklist";
 import { displayFieldValue, fieldLabel, requestTypeLabel } from "@/lib/contact-inquiry-labels";
+import { getContactInquiryRecipientEmails, normalizeContactInquiryMode } from "@/lib/contact-inquiry-recipients";
 
 export const runtime = "nodejs";
 
@@ -134,7 +135,7 @@ export async function POST(request: Request) {
   // Bot trap
   if (norm(body.website, 200)) return json(200, { ok: true }, origin);
 
-  const mode = norm(body.mode, 32) || "kontakt";
+  const mode = normalizeContactInquiryMode(norm(body.mode, 32) || "kontakt");
   const name = norm(body.name, 120);
   const company = norm(body.company, 180);
   const email = norm(body.email, 180).toLowerCase();
@@ -199,14 +200,16 @@ export async function POST(request: Request) {
     { label: "Nachricht", value: message || "-" },
     ...detailSections(body.details),
   ];
-  const emailRes = await sendContactInquiryEmail({
+  const recipientEmails = await getContactInquiryRecipientEmails(mode);
+  const emailRes = recipientEmails.length ? await sendContactInquiryEmail({
+    to: recipientEmails,
     subject,
     preheader: `Neue Anfrage von ${name}`,
     sections: allSections,
     /* legacy section list removed; allSections contains the complete payload.
       { label: "E‑Mail", value: email },
     */
-  });
+  }) : { ok: false as const, error: "inquiry_recipients_missing" };
 
   return json(200, { ok: true, id, email: emailRes.ok ? "sent" : emailRes.error }, origin);
 }

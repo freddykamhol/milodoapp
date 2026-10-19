@@ -1,7 +1,20 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { appointmentApplications, appointmentRequirements, appointments } from "@/db/schema";
+import { appointmentApplications, appointmentRequirements, appointments, appointmentSections, appointmentSectionMembers, appointmentVehicles, appointmentVehicleMembers } from "@/db/schema";
+
+export function setApplicationState(appointmentId: number, userId: number, status: "REPORTED" | "CANCELLED", note = "") {
+  return db.transaction(tx => {
+    const application = tx.select().from(appointmentApplications).where(and(eq(appointmentApplications.appointmentId, appointmentId), eq(appointmentApplications.userId, userId))).get();
+    if (!application) return null;
+    tx.update(appointmentApplications).set({ status, adminNote: note, role: "NORMAL", updatedAt: new Date() }).where(eq(appointmentApplications.id, application.id)).run();
+    const sections = tx.select({ id: appointmentSections.id }).from(appointmentSections).where(eq(appointmentSections.appointmentId, appointmentId)).all().map(row => row.id);
+    const vehicleAssignments = tx.select({ id: appointmentVehicles.id }).from(appointmentVehicles).where(eq(appointmentVehicles.appointmentId, appointmentId)).all().map(row => row.id);
+    if (sections.length) tx.delete(appointmentSectionMembers).where(and(eq(appointmentSectionMembers.userId, userId), inArray(appointmentSectionMembers.sectionId, sections))).run();
+    if (vehicleAssignments.length) tx.delete(appointmentVehicleMembers).where(and(eq(appointmentVehicleMembers.userId, userId), inArray(appointmentVehicleMembers.appointmentVehicleId, vehicleAssignments))).run();
+    return application;
+  });
+}
 
 export type StaffingStatus = "BESETZT" | "UNBESETZT" | "UNTERBESETZT";
 

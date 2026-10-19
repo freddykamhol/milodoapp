@@ -1,3 +1,4 @@
+import { dateFormatter } from "@/lib/date-format";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
@@ -30,6 +31,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const appointment = await db.query.appointments.findFirst({ where: (t, { eq }) => eq(t.id, appointmentId) });
   if (!appointment) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  if (appointment.state === "CANCELLED") return NextResponse.json({ ok:false,error:"Abgesagte Dienste können nicht besetzt werden." },{status:409});
   const prevStaffing = appointment.staffingStatus;
 
   const body = (await request.json().catch(() => null)) as
@@ -38,6 +40,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const userId = Number(body?.userId);
   if (!Number.isFinite(userId)) return NextResponse.json({ ok: false, error: "invalid_user" }, { status: 400 });
   const role = body?.role === "EL" ? "EL" : "NORMAL";
+  const member = await db.query.users.findFirst({where:(t,{eq})=>eq(t.id,userId),columns:{id:true,role:true,locked:true}});
+  if (!member || member.role === "KUNDE" || member.locked) return NextResponse.json({ok:false,error:"Diese Person kann nicht eingeteilt werden."},{status:400});
 
   await db
     .insert(appointmentApplications)
@@ -61,7 +65,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   });
 
   const title = "Du wurdest eingeteilt";
-  const when = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt);
+  const when = dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt);
   const bodyText = `${appointment.title}\n${when}\n\nÖffne den Termin für Details.`;
   const href = `/appointments/${appointment.id}`;
 
@@ -135,7 +139,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           userId: cust.accountUserId,
           kind: "SYSTEM",
           title: "Dienst besetzt",
-          body: `${appointment.title}\n${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt)}`,
+          body: `${appointment.title}\n${dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt)}`,
           href: `/appointments/${appointment.id}`,
         });
 
@@ -158,7 +162,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             sections: [
               { label: "Kunde", value: cust.name || "" },
               { label: "Dienst", value: appointment.title },
-              { label: "Zeit", value: new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt) },
+              { label: "Zeit", value: dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt) },
             ].filter((s) => s.value),
             button: { label: "Zum Dienst", url: `${getAppUrl()}/appointments/${appointment.id}` },
           }).catch(() => null);

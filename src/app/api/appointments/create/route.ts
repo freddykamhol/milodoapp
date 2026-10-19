@@ -1,3 +1,8 @@
+import { dateFormatter } from "@/lib/date-format";
+import {validateCourse,CourseError} from '@/lib/courses';
+import {courseEnd} from '@/lib/course-types';
+import {validateCourseMaterials} from '@/lib/course-materials';
+import {courseMaterials} from '@/db/schema';
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { and, eq, gte, lt, or } from "drizzle-orm";
@@ -5,7 +10,7 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 import { db } from "@/lib/db";
 import { buildEmailHtml } from "@/lib/email";
-import { triggerAppointmentInquiry } from "@/lib/appointment-inquiry";
+import { createAppointmentInquiryNotifications, triggerAppointmentInquiry } from "@/lib/appointment-inquiry";
 import { sendNotificationEmail } from "@/lib/notification-email";
 import { sendSmtpMail } from "@/lib/smtp-mail";
 import { getViewer } from "@/lib/viewer";
@@ -55,7 +60,7 @@ function formatHoursLabel(startAt: Date, endAt: Date) {
 }
 
 function serviceTypeLabel(serviceType: ServiceType) {
-  if (serviceType === "RD_BOERSE") return "Rettungsdienst-Börse";
+  if (serviceType === "RD_BOERSE") return "RD-Personalvermittlung";
   if (serviceType === "SANITATSDIENST") return "Sanitätsdienst";
   return "Erste Hilfe";
 }
@@ -154,9 +159,9 @@ async function buildServicePdf({
   line(title, { bold: true, size: 16 });
   y -= 4;
   line(
-    `${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium" }).format(startAt)} • ${new Intl.DateTimeFormat("de-DE", {
+    `${dateFormatter({ dateStyle: "medium" }).format(startAt)} • ${dateFormatter({
       timeStyle: "short",
-    }).format(startAt)}–${new Intl.DateTimeFormat("de-DE", { timeStyle: "short" }).format(endAt)} (${formatHoursLabel(
+    }).format(startAt)}–${dateFormatter({ timeStyle: "short" }).format(endAt)} (${formatHoursLabel(
       startAt,
       endAt,
     )})`,
@@ -170,7 +175,7 @@ async function buildServicePdf({
     y -= 16;
   };
 
-  kv("Bereich", serviceType === "RD_BOERSE" ? "Rettungsdienst-Börse" : serviceType === "SANITATSDIENST" ? "Sanitätsdienst" : "Erste Hilfe");
+  kv("Bereich", serviceType === "RD_BOERSE" ? "RD-Personalvermittlung" : serviceType === "SANITATSDIENST" ? "Sanitätsdienst" : "Erste Hilfe");
   kv("Kunde", customerName);
   kv("Ansprechpartner", customerContact);
   kv("Adresse", customerAddress);
@@ -262,6 +267,10 @@ export async function POST(request: Request) {
     assets: Array<{ item: string; count: number }>;
     visitors?: number | null;
     participants?: Array<string>;
+    courseType?:string;
+    participantLimit?:number;
+    courseLocationType?:'OWN'|'EXTERNAL';
+    courseMaterials?:Array<{itemId:number;count:number}>;
     notes?: string;
   };
 
@@ -275,9 +284,19 @@ export async function POST(request: Request) {
 
   const serviceType = (isCustomer ? customerAccountRow!.mainBereich : body.serviceType) as ServiceType;
   const startAt = new Date(body.startAt);
-  const endAt = new Date(body.endAt);
+  let courseValues:ReturnType<typeof validateCourse>|null=null;
+  if(serviceType==='ERSTE_HILFE'){try{courseValues=validateCourse(body.courseType,body.participantLimit);}catch(error){return NextResponse.json({error:error instanceof CourseError?error.message:'Ungültige Kursdaten.',message:error instanceof CourseError?error.message:'Ungültige Kursdaten.'},{status:400});}}
+  const endAt = courseValues&&Number.isFinite(+startAt)?courseEnd(startAt,courseValues.courseType):new Date(body.endAt);
   if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()) || endAt <= startAt) {
     return NextResponse.json({ ok: false, error: "invalid_time" }, { status: 400 });
+  }
+  let selectedMaterials:Awaited<ReturnType<typeof validateCourseMaterials>>=[];
+  if(courseValues){
+    if(body.courseLocationType==='OWN')body.location={name:'Eigene Ausbildungsräume',street:'',houseNumber:'',plz:'',city:''};
+    else if(body.courseLocationType!==undefined&&body.courseLocationType!=='EXTERNAL')return NextResponse.json({error:'Ungültiger Kursort.',message:'Ungültiger Kursort.'},{status:400});
+    else if(!body.location||['name','street','houseNumber','plz','city'].some(key=>!String(body.location[key as keyof typeof body.location]??'').trim()))return NextResponse.json({error:'Bitte alle Angaben zum externen Kursort ausfüllen.',message:'Bitte alle Angaben zum externen Kursort ausfüllen.'},{status:400});
+    try{selectedMaterials=await validateCourseMaterials(isAdmin?body.courseMaterials:[]);}catch(error){return NextResponse.json({error:error instanceof CourseError?error.message:'Ungültiges Material.',message:error instanceof CourseError?error.message:'Ungültiges Material.'},{status:400});}
+    body.assets=selectedMaterials.map(item=>({item:item.name+' ('+item.inventoryNumber+')',count:item.quantity}));
   }
 
   const customerName = String(isCustomer ? customerAccountRow!.name : body.customer?.name ?? "").trim();
@@ -394,6 +413,7 @@ export async function POST(request: Request) {
   const einsatzort = [locationName, locationAddrFull].filter(Boolean).join(" • ");
 
   const details = {
+    ...(courseValues?{courseLocationType:body.courseLocationType??'EXTERNAL'}:{}),
     serviceType,
     rdType: dienstart,
     acuteInquiryEnabled: Boolean(body.acuteInquiryEnabled),
@@ -412,10 +432,12 @@ export async function POST(request: Request) {
     visitors: body.visitors ?? null,
     participants: Array.isArray(body.participants) ? body.participants : [],
     assets: Array.isArray(body.assets) ? body.assets : [],
+    requirements: Array.isArray(body.requirements) ? body.requirements : [],
     notes: String(body.notes ?? "").trim(),
   };
 
-  const inserted = await db
+  const inserted = db.transaction(tx=>{
+  const rows = tx
     .insert(appointments)
     .values({
       startAt,
@@ -428,10 +450,14 @@ export async function POST(request: Request) {
       eventName,
       notes: String(body.notes ?? "").trim(),
       detailsJson: JSON.stringify(details),
+      ...(courseValues??{}),
       approved: isAdmin,
       approvedAt: isAdmin ? new Date() : null,
     })
-    .returning({ id: appointments.id });
+    .returning({ id: appointments.id }).all();
+  if(rows[0]&&selectedMaterials.length)tx.insert(courseMaterials).values(selectedMaterials.map(item=>({...item,appointmentId:rows[0].id}))).run();
+  return rows;
+  },{behavior:'immediate'});
 
   const appointmentId = inserted.at(0)?.id ?? null;
   if (!appointmentId) return NextResponse.json({ ok: false, error: "insert_failed" }, { status: 500 });
@@ -465,14 +491,7 @@ export async function POST(request: Request) {
           .filter((r) => r.value),
       );
 
-      await db.insert(notifications).values({
-        scope: "ALL",
-        kind: requestKind,
-        title: requestKind === "URGENT_REQUESTS" ? "AKUTE ABFRAGE" : "Dienstabfrage",
-        body: `${title}\n${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(startAt)}\n${reqLabel}`,
-        href: `/appointments/${appointmentId}`,
-      });
-
+      await createAppointmentInquiryNotifications(appointmentId, requestKind);
       await triggerAppointmentInquiry(appointmentId, requestKind).catch(() => null);
     } catch {
       // ignore inquiry errors for now
@@ -485,7 +504,7 @@ export async function POST(request: Request) {
         userId: viewer.id,
         kind: "SYSTEM",
         title: "Dienst angefordert",
-        body: `${title}\n${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(startAt)}`,
+        body: `${title}\n${dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(startAt)}`,
         href: `/appointments/${appointmentId}`,
       });
 
@@ -493,15 +512,15 @@ export async function POST(request: Request) {
         scope: "ALL",
         kind: "SYSTEM",
         title: "Neue Kundenanforderung",
-        body: `${customerRow.name}\n${title}\n${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(startAt)}`,
+        body: `${customerRow.name}\n${title}\n${dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(startAt)}`,
         href: `/appointments/${appointmentId}`,
       });
     } catch {
       // ignore
     }
 
-    const when = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(startAt);
-    const whenRange = `${when}–${new Intl.DateTimeFormat("de-DE", { timeStyle: "short" }).format(endAt)}`;
+    const when = dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(startAt);
+    const whenRange = `${when}–${dateFormatter({ timeStyle: "short" }).format(endAt)}`;
     const url = `${getAppUrl()}/appointments/${appointmentId}`;
     const requestSections = [
       { label: "Anfrageart", value: "Kundenanforderung" },

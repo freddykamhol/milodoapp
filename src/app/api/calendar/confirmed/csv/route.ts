@@ -1,7 +1,5 @@
-import { and, asc, eq, gte, lt } from "drizzle-orm";
+import {loadCalendarExportRows} from "@/lib/calendar-read-model";
 
-import { db } from "@/lib/db";
-import { appointmentApplications, appointments, customers } from "@/db/schema";
 import { getViewer } from "@/lib/viewer";
 
 function parseDate(value: string | null, fallback: Date) {
@@ -36,30 +34,7 @@ export async function GET(request: Request) {
 
   const viewer = await getViewer();
   if (!viewer) return new Response("unauthorized", { status: 401 });
-  const userId = viewer.id;
-  const rows = await db
-    .select({
-      startAt: appointments.startAt,
-      endAt: appointments.endAt,
-      title: appointments.title,
-      einsatzort: appointments.einsatzort,
-      customerName: customers.name,
-      bereich: appointments.bereich,
-      dienstart: appointments.dienstart,
-    })
-    .from(appointmentApplications)
-    .innerJoin(appointments, eq(appointmentApplications.appointmentId, appointments.id))
-    .innerJoin(customers, eq(appointments.customerId, customers.id))
-    .where(
-      and(
-        eq(appointmentApplications.userId, userId),
-        eq(appointmentApplications.status, "CONFIRMED"),
-        gte(appointments.startAt, from),
-        lt(appointments.startAt, to),
-        eq(appointments.state, "OPEN"),
-      ),
-    )
-    .orderBy(asc(appointments.startAt));
+  const rows = await loadCalendarExportRows(viewer,from,to);
 
   const header = ["Datum", "Start", "Ende", "DauerMinuten", "Titel", "Einsatzort", "Kunde", "Bereich", "Dienstart", "Notiz"];
   const lines = [header.map(csvEscape).join(";")];

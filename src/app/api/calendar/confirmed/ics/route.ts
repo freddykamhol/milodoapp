@@ -1,7 +1,5 @@
-import { and, asc, eq, gte, lt } from "drizzle-orm";
+import {loadCalendarExportRows} from "@/lib/calendar-read-model";
 
-import { db } from "@/lib/db";
-import { appointmentApplications, appointments, customers } from "@/db/schema";
 import { getViewer } from "@/lib/viewer";
 
 function parseDate(value: string | null, fallback: Date) {
@@ -36,29 +34,7 @@ export async function GET(request: Request) {
 
   const viewer = await getViewer();
   if (!viewer) return new Response("unauthorized", { status: 401 });
-  const userId = viewer.id;
-  const rows = await db
-    .select({
-      appointmentId: appointments.id,
-      startAt: appointments.startAt,
-      endAt: appointments.endAt,
-      title: appointments.title,
-      einsatzort: appointments.einsatzort,
-      customerName: customers.name,
-    })
-    .from(appointmentApplications)
-    .innerJoin(appointments, eq(appointmentApplications.appointmentId, appointments.id))
-    .innerJoin(customers, eq(appointments.customerId, customers.id))
-    .where(
-      and(
-        eq(appointmentApplications.userId, userId),
-        eq(appointmentApplications.status, "CONFIRMED"),
-        gte(appointments.startAt, from),
-        lt(appointments.startAt, to),
-        eq(appointments.state, "OPEN"),
-      ),
-    )
-    .orderBy(asc(appointments.startAt));
+  const rows = await loadCalendarExportRows(viewer,from,to);
 
   const lines: string[] = [
     "BEGIN:VCALENDAR",
@@ -75,11 +51,11 @@ export async function GET(request: Request) {
   const dtstamp = toIcsUtc(new Date());
 
   for (const row of rows) {
-    const uid = `appointment-${row.appointmentId}@milodo`;
+    const uid = `${row.eventId}@milodo`;
     const dtstart = toIcsUtc(row.startAt);
     const dtend = toIcsUtc(row.endAt ?? new Date(row.startAt.getTime() + 60 * 60 * 1000));
     const summary = escapeIcs(row.title);
-    const location = escapeIcs(`${row.customerName} – ${row.einsatzort}`);
+    const location = escapeIcs([row.customerName,row.einsatzort].filter(Boolean).join(" – "));
 
     lines.push("BEGIN:VEVENT");
     lines.push(`UID:${uid}`);

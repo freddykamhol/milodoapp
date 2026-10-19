@@ -1,8 +1,9 @@
+import { dateFormatter } from "@/lib/date-format";
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { recomputeAppointmentStaffingStatus } from "@/lib/appointment-staffing";
+import { recomputeAppointmentStaffingStatus, setApplicationState } from "@/lib/appointment-staffing";
 import { appointmentApplications, notifications } from "@/db/schema";
 import { getViewer } from "@/lib/viewer";
 
@@ -28,15 +29,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const userId = Number(body?.userId);
   if (!Number.isFinite(userId)) return NextResponse.json({ ok: false, error: "invalid_user" }, { status: 400 });
 
-  await db
-    .update(appointmentApplications)
-    .set({ status: "REPORTED", adminNote: "", role: "NORMAL", updatedAt: new Date() })
-    .where(and(eq(appointmentApplications.appointmentId, appointmentId), eq(appointmentApplications.userId, userId)));
+  const previous = setApplicationState(appointmentId, userId, "REPORTED");
+  if (!previous) return NextResponse.json({ ok: false, error: "application_not_found" }, { status: 404 });
 
   await recomputeAppointmentStaffingStatus(appointmentId);
 
   const title = "Deine Einteilung wurde zurückgesetzt";
-  const when = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt);
+  const when = dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt);
   await db.insert(notifications).values({
     scope: "USER",
     userId,

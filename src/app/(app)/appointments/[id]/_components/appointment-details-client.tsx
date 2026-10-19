@@ -1,10 +1,15 @@
 "use client";
 
+import { dateFormatter } from "@/lib/date-format";
+import { notify, requestText } from "@/app/_components/feedback";
+import { AppSelect } from "@/app/_components/select";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
 import { Badge, Card } from "../../../_components/ui";
+import type { ServiceVehicle } from "@/lib/asset-types";
+import { serviceAreaLabel } from "@/lib/service-area-label";
 
 type Viewer = {
   id: number;
@@ -31,7 +36,6 @@ type Appointment = {
 };
 
 type Requirement = { kind: "QUAL_RD" | "QUAL_AUSB"; value: string; minCount: number };
-type FileRow = { id: number; fileName: string; mimeType: string; sizeBytes: number };
 type ApplicationRow = {
   userId: number;
   username: string;
@@ -46,6 +50,8 @@ type ApplicationRow = {
 type SectionRow = { id: number; title: string; sortOrder: number };
 type SectionMemberRow = { sectionId: number; userId: number; username: string; qualRD: string | null; qualAusb: string | null };
 type MemberRow = { id: number; username: string; role: string; qualRD: string | null; qualAusb: string | null };
+type VehicleAssignmentRow = { assignmentId: number; vehicleId: number; licensePlate: string; type: string; userId: number | null; username: string | null; qualRD: string | null; qualAusb: string | null };
+type VehicleOption = { id: number; licensePlate: string; type: string };
 
 type DetailsJson = {
   serviceType?: string;
@@ -58,11 +64,11 @@ type DetailsJson = {
 };
 
 function formatDateTime(d: Date) {
-  return new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d);
+  return dateFormatter({ weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d);
 }
 
 function formatTime(d: Date) {
-  return new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(d);
+  return dateFormatter({ hour: "2-digit", minute: "2-digit" }).format(d);
 }
 
 function formatTimeRange(startAt: Date, endAt: Date | null) {
@@ -217,11 +223,12 @@ export function AppointmentDetailsClient({
   appointment,
   customer,
   requirements,
-  files,
   applications,
   sections,
   sectionMembers,
   allMembers,
+  vehicleAssignments,
+  vehicleList,
 }: {
   viewer: Viewer;
   canAdmin: boolean;
@@ -238,11 +245,12 @@ export function AppointmentDetailsClient({
     phone: string;
   } | null;
   requirements: Requirement[];
-  files: FileRow[];
   applications: ApplicationRow[];
   sections: SectionRow[];
   sectionMembers: SectionMemberRow[];
   allMembers: MemberRow[];
+  vehicleAssignments: VehicleAssignmentRow[];
+  vehicleList: VehicleOption[];
 }) {
   const router = useRouter();
   const details = React.useMemo(() => safeParseDetails(appointment.detailsJson), [appointment.detailsJson]);
@@ -254,6 +262,8 @@ export function AppointmentDetailsClient({
   const [approved, setApproved] = React.useState(Boolean(appointment.approved));
   const [releaseBusy, setReleaseBusy] = React.useState(false);
   const [releaseHint, setReleaseHint] = React.useState<string | null>(null);
+  const [vehicleRows, setVehicleRows] = React.useState(vehicleAssignments);
+  const [selectedVehicleId, setSelectedVehicleId] = React.useState<number | "">("");
 
   const reported = applications.filter((a) => a.status === "REPORTED");
   const confirmed = applications
@@ -279,6 +289,16 @@ export function AppointmentDetailsClient({
     for (const c of applications) if (c.status === "CONFIRMED") set.add(c.userId);
     return set;
   }, [applications]);
+
+  const groupedVehicles = React.useMemo(() => {
+    const map = new Map<number, { assignmentId: number; vehicleId: number; licensePlate: string; type: string; members: VehicleAssignmentRow[] }>();
+    for (const row of vehicleRows) {
+      const existing = map.get(row.assignmentId) ?? { assignmentId: row.assignmentId, vehicleId: row.vehicleId, licensePlate: row.licensePlate, type: row.type, members: [] };
+      if (row.userId) existing.members.push(row);
+      map.set(row.assignmentId, existing);
+    }
+    return Array.from(map.values());
+  }, [vehicleRows]);
 
   const customerAddress = customer
     ? [customer.street, customer.houseNumber].filter(Boolean).join(" ").trim() || "—"
@@ -313,7 +333,7 @@ export function AppointmentDetailsClient({
     } catch {
       setFlash({ tone: "danger", text: "Melden fehlgeschlagen (bitte später erneut versuchen)." });
       window.setTimeout(() => setFlash(null), 6000);
-      window.alert("Melden fehlgeschlagen (bitte später erneut versuchen).");
+      notify("Melden fehlgeschlagen (bitte später erneut versuchen).");
     } finally {
       setBusyUserId(null);
     }
@@ -330,7 +350,7 @@ export function AppointmentDetailsClient({
       if (!res.ok) throw new Error("assign_failed");
       router.refresh();
     } catch {
-      window.alert("Einteilen fehlgeschlagen.");
+      notify("Einteilen fehlgeschlagen.");
     } finally {
       setBusyUserId(null);
     }
@@ -358,7 +378,7 @@ export function AppointmentDetailsClient({
   }
 
   async function adminUnassign(userId: number) {
-    const note = window.prompt("Bemerkung zum Austragen (optional):", "") ?? "";
+    const note = (await requestText("Bemerkung zum Austragen (optional):", "")) ?? "";
     setBusyUserId(userId);
     try {
       const res = await fetch(`/api/appointments/${appointment.id}/admin/unassign`, {
@@ -369,7 +389,7 @@ export function AppointmentDetailsClient({
       if (!res.ok) throw new Error("unassign_failed");
       router.refresh();
     } catch {
-      window.alert("Austragen fehlgeschlagen.");
+      notify("Austragen fehlgeschlagen.");
     } finally {
       setBusyUserId(null);
     }
@@ -386,7 +406,7 @@ export function AppointmentDetailsClient({
       if (!res.ok) throw new Error("to_reported_failed");
       router.refresh();
     } catch {
-      window.alert("Umwandeln in Meldung fehlgeschlagen.");
+      notify("Umwandeln in Meldung fehlgeschlagen.");
     } finally {
       setBusyUserId(null);
     }
@@ -403,7 +423,7 @@ export function AppointmentDetailsClient({
       if (!res.ok) throw new Error("set_role_failed");
       router.refresh();
     } catch {
-      window.alert("Rolle ändern fehlgeschlagen.");
+      notify("Rolle ändern fehlgeschlagen.");
     } finally {
       setBusyUserId(null);
     }
@@ -423,7 +443,7 @@ export function AppointmentDetailsClient({
       setNewSectionTitle("");
       router.refresh();
     } catch {
-      window.alert("Abschnitt konnte nicht angelegt werden.");
+      notify("Abschnitt konnte nicht angelegt werden.");
     } finally {
       setAddingSection(false);
     }
@@ -439,7 +459,7 @@ export function AppointmentDetailsClient({
       if (!res.ok) throw new Error("assign_failed");
       router.refresh();
     } catch {
-      window.alert("Zuordnung fehlgeschlagen.");
+      notify("Zuordnung fehlgeschlagen.");
     }
   }
 
@@ -453,16 +473,26 @@ export function AppointmentDetailsClient({
       if (!res.ok) throw new Error("remove_failed");
       router.refresh();
     } catch {
-      window.alert("Entfernen fehlgeschlagen.");
+      notify("Entfernen fehlgeschlagen.");
     }
   }
 
+  async function vehicleAction(body: Record<string, unknown>) {
+    const res = await fetch(`/api/appointments/${appointment.id}/vehicles`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) { notify("Fahrzeug-Zuordnung konnte nicht gespeichert werden."); return; }
+    const fresh = await fetch(`/api/appointments/${appointment.id}/vehicles`);
+    const result = await fresh.json() as {vehicles:ServiceVehicle[]};
+    setVehicleRows(result.vehicles.flatMap<VehicleAssignmentRow>((v) => v.members.length ? v.members.map((m) => ({ assignmentId: v.id, vehicleId: v.vehicleId, licensePlate: v.licensePlate, type: v.type, ...m })) : [{ assignmentId: v.id, vehicleId: v.vehicleId, licensePlate: v.licensePlate, type: v.type, userId: null, username: null, qualRD: null, qualAusb: null }]));
+  }
+
+  async function addVehicle() { if (!selectedVehicleId) return; await vehicleAction({ action: "add", vehicleId: Number(selectedVehicleId) }); setSelectedVehicleId(""); }
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {flash ? (
         <div
           className={[
-            "rounded-3xl border border-[var(--border)] px-4 py-3 text-sm font-semibold shadow-[var(--shadow-soft)]",
+            "rounded-2xl border border-[var(--border)] px-4 py-3 text-sm font-semibold shadow-[var(--shadow-soft)]",
             flash.tone === "success"
               ? "bg-[color:color-mix(in_oklab,var(--success)_10%,transparent)] text-[color:var(--success)]"
               : "bg-[color:color-mix(in_oklab,var(--danger)_10%,transparent)] text-[color:var(--danger)]",
@@ -480,7 +510,7 @@ export function AppointmentDetailsClient({
                 type="button"
                 disabled={releaseBusy}
                 onClick={() => void releaseAppointment()}
-                className="rounded-2xl bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white shadow-[0_12px_28px_color-mix(in_oklab,var(--accent)_35%,transparent)] hover:brightness-95 disabled:opacity-60"
+                className="ui-button-primary"
               >
                 {releaseBusy ? "Freigabe…" : "Freigeben + Abfrage starten"}
               </button>
@@ -510,7 +540,7 @@ export function AppointmentDetailsClient({
               type="button"
               disabled={busyUserId === viewer.id || viewerApplication?.status === "CONFIRMED"}
               onClick={() => void report()}
-              className="w-full rounded-3xl bg-[color:var(--accent)] px-5 py-4 text-base font-bold text-white shadow-[0_16px_34px_color-mix(in_oklab,var(--accent)_35%,transparent)] hover:brightness-95 disabled:opacity-60"
+                className="ui-button-primary w-full justify-center py-3 text-sm"
             >
               {viewerApplication?.status === "REPORTED" ? "Bereits gemeldet" : viewerApplication?.status === "CONFIRMED" ? "Bereits eingeteilt" : "Melden"}
             </button>
@@ -524,7 +554,7 @@ export function AppointmentDetailsClient({
           </div>
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
             <p className="text-xs font-semibold text-[color:var(--muted)]">Bereich</p>
-            <p className="mt-1 text-sm font-semibold">{appointment.bereich}</p>
+            <p className="mt-1 text-sm font-semibold">{serviceAreaLabel(appointment.bereich)}</p>
             <p className="mt-1 text-xs font-semibold text-[color:var(--muted)]">{appointment.dienstart ?? "—"}</p>
           </div>
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 sm:col-span-2">
@@ -628,35 +658,12 @@ export function AppointmentDetailsClient({
         <p className="text-sm font-semibold whitespace-pre-wrap">{appointment.notes?.trim() ? appointment.notes : "—"}</p>
       </Card>
 
-      <Card title="Dienstdokument" description="Automatisch erzeugte PDFs.">
-        {files.length ? (
-          <ul className="space-y-2">
-            {files.map((f) => (
-              <li key={f.id} className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{f.fileName}</p>
-                  <p className="mt-1 text-[11px] font-semibold text-[color:var(--muted)]">{Math.round((f.sizeBytes || 0) / 1024)} KB</p>
-                </div>
-                <a
-                  className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-xs font-semibold hover:bg-[var(--surface)]"
-                  href={`/api/appointments/files/${f.id}/download`}
-                >
-                  Download
-                </a>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-[color:var(--muted)]">Noch kein Dokument vorhanden.</p>
-        )}
-      </Card>
-
       {canAdmin ? (
         <Card title="Personal hinzufügen" description="Admin/Verwaltung kann Personal auch ohne Meldung einteilen.">
           <div className="flex flex-col gap-3 md:flex-row md:items-end">
             <label className="block md:flex-1">
               <span className="text-xs font-semibold text-[color:var(--muted)]">Mitglied</span>
-              <select
+              <AppSelect
                 className="mt-1 h-10 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm font-semibold outline-none focus:border-[color:var(--ring)]"
                 value={selectedMemberId}
                 onChange={(e) => {
@@ -670,7 +677,7 @@ export function AppointmentDetailsClient({
                     {m.username} {confirmedIds.has(m.id) ? "(bereits eingeteilt)" : ""} • {qualLabel(m.qualRD, m.qualAusb)}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </label>
 
             <div className="flex flex-wrap gap-2">
@@ -678,7 +685,7 @@ export function AppointmentDetailsClient({
                 type="button"
                 disabled={!selectedMemberId || busyUserId === selectedMemberId || confirmedIds.has(Number(selectedMemberId))}
                 onClick={() => void adminAssign(Number(selectedMemberId), "NORMAL")}
-                className="rounded-2xl bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white shadow-[0_12px_28px_color-mix(in_oklab,var(--accent)_35%,transparent)] hover:brightness-95 disabled:opacity-60"
+                className="ui-button-primary"
               >
                 Einteilen
               </button>
@@ -686,7 +693,7 @@ export function AppointmentDetailsClient({
                 type="button"
                 disabled={!selectedMemberId || busyUserId === selectedMemberId || confirmedIds.has(Number(selectedMemberId))}
                 onClick={() => void adminAssign(Number(selectedMemberId), "EL")}
-                className="rounded-2xl border border-[color:color-mix(in_oklab,#f59e0b_35%,var(--border))] bg-[color:color-mix(in_oklab,#f59e0b_10%,var(--surface))] px-4 py-2 text-xs font-semibold text-[#b45309] hover:brightness-95 disabled:opacity-60"
+                className="ui-button-secondary"
               >
                 Einteilen als EL
               </button>
@@ -697,7 +704,7 @@ export function AppointmentDetailsClient({
 
       <Card title="Meldungen / Eingeteilt" description="Statusübersicht für alle sichtbar.">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-semibold tracking-tight">Meldungen</p>
               <Badge tone="muted">{reported.length}</Badge>
@@ -730,7 +737,7 @@ export function AppointmentDetailsClient({
             )}
           </div>
 
-          <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-semibold tracking-tight">Eingeteilt</p>
               <Badge tone="muted">{confirmed.length}</Badge>
@@ -794,14 +801,14 @@ export function AppointmentDetailsClient({
                 type="button"
                 disabled={addingSection || !newSectionTitle.trim()}
                 onClick={() => void createSection()}
-                className="rounded-2xl bg-[color:var(--accent)] px-4 py-2 text-xs font-semibold text-white shadow-[0_12px_28px_color-mix(in_oklab,var(--accent)_35%,transparent)] hover:brightness-95 disabled:opacity-60"
+                className="ui-button-primary"
               >
                 Hinzufügen
               </button>
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4">
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
                 <p className="text-sm font-semibold tracking-tight">Ohne Abschnitt</p>
                 <p className="mt-1 text-[11px] font-semibold text-[color:var(--muted)]">Ziehe Personen in einen Abschnitt.</p>
                 <div className="mt-3 space-y-2">
@@ -844,7 +851,7 @@ export function AppointmentDetailsClient({
                         if (!Number.isFinite(userId)) return;
                         void assignToSection(s.id, userId);
                       }}
-                      className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4"
+                      className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-semibold tracking-tight">{s.title}</p>
@@ -876,12 +883,30 @@ export function AppointmentDetailsClient({
                 })}
 
                 {!sections.length ? (
-                  <div className="rounded-3xl border border-dashed border-[var(--border)] bg-[var(--surface)] p-6 text-sm text-[color:var(--muted)]">
+                  <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface)] p-6 text-sm text-[color:var(--muted)]">
                     Lege zuerst Abschnitte/Fahrzeuge an, dann kannst du Personal zuordnen.
                   </div>
                 ) : null}
               </div>
             </div>
+          </div>
+        </Card>
+      ) : null}
+      {canAdmin ? (
+        <Card title="Fahrzeuge besetzen" description="Fahrzeuge zum Dienst hinzufügen und eingeteiltes Personal per Drag-and-drop zuordnen.">
+          <div className="flex flex-wrap gap-2">
+            <AppSelect value={selectedVehicleId} onChange={(e) => setSelectedVehicleId(e.target.value ? Number(e.target.value) : "")} className="h-10 w-full min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 text-sm">
+              <option value="">Fahrzeug auswählen …</option>
+              {vehicleList.filter((v) => !groupedVehicles.some((a) => a.vehicleId === v.id)).map((v) => <option key={v.id} value={v.id}>{v.licensePlate} · {v.type}</option>)}
+            </AppSelect>
+            <button type="button" onClick={() => void addVehicle()} disabled={!selectedVehicleId} className="ui-button-primary">Fahrzeug hinzufügen</button>
+          </div>
+          <div className="mt-4 grid gap-4 lg:grid-cols-[260px_1fr]">
+            <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-2)] p-3" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const userId = Number(e.dataTransfer.getData("text/plain")); if (userId) { const row = vehicleRows.find((r) => r.userId === userId); if (row) void vehicleAction({ action: "remove-member", assignmentId: row.assignmentId, userId }); } }}>
+              <p className="text-sm font-semibold">Nicht zugeordnet</p><p className="mt-1 text-xs text-[color:var(--muted)]">Personal per Auswahl zuordnen oder in ein Fahrzeug ziehen.</p>
+              <div className="mt-3 space-y-2">{confirmed.filter((u) => !vehicleRows.some((r) => r.userId === u.userId)).map((u) => <div key={u.userId} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", String(u.userId))} className="cursor-grab rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2 text-sm font-semibold">{u.username}<span className="block text-[11px] font-normal text-[color:var(--muted)]">{qualLabel(u.qualRD, u.qualAusb)}</span><AppSelect className="mt-2" value="" aria-label={`Fahrzeug für ${u.username}`} onChange={event=>{if(event.target.value)void vehicleAction({action:"assign",assignmentId:Number(event.target.value),userId:u.userId});}}><option value="">Fahrzeug zuordnen</option>{groupedVehicles.map(vehicle=><option key={vehicle.assignmentId} value={vehicle.assignmentId}>{vehicle.licensePlate}</option>)}</AppSelect></div>)}</div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">{groupedVehicles.map((vehicle) => <div key={vehicle.assignmentId} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={(e) => { e.preventDefault(); const userId = Number(e.dataTransfer.getData("text/plain")); if (userId) void vehicleAction({ action: "assign", assignmentId: vehicle.assignmentId, userId }); }} className="min-h-36 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3"><div className="flex items-center justify-between"><div><p className="font-semibold">{vehicle.licensePlate}</p><p className="text-xs text-[color:var(--muted)]">{vehicle.type} · {vehicle.members.length} Personen</p></div><button type="button" onClick={() => void vehicleAction({ action: "remove", assignmentId: vehicle.assignmentId })} className="text-xs font-semibold text-[color:var(--danger)]">Entfernen</button></div><div className="mt-3 space-y-2">{vehicle.members.map((m) => <div key={m.userId} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", String(m.userId))} className="cursor-grab rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2 text-sm font-semibold">{m.username}<span className="block text-[11px] font-normal text-[color:var(--muted)]">{qualLabel(m.qualRD, m.qualAusb)}</span><button type="button" className="mt-2 text-xs text-[color:var(--danger)]" onClick={()=>void vehicleAction({action:"remove-member",assignmentId:vehicle.assignmentId,userId:m.userId})}>Zuordnung aufheben</button></div>)}{!vehicle.members.length && <p className="text-xs text-[color:var(--muted)]">Drop hier …</p>}</div></div>)}</div>
           </div>
         </Card>
       ) : null}

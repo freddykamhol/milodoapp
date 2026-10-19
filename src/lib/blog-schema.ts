@@ -2,7 +2,9 @@ import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 
-export async function ensureBlogSchema() {
+let ready:Promise<void>|undefined;
+export function ensureBlogSchema(){if(!ready)ready=initializeBlogSchema().catch(error=>{ready=undefined;throw error;});return ready;}
+async function initializeBlogSchema() {
   // Similar to personal questionnaires: keep runtime working even if migrations weren't applied.
   await db.run(sql`
     CREATE TABLE IF NOT EXISTS blog_posts (

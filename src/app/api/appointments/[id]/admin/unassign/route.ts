@@ -1,8 +1,9 @@
+import { dateFormatter } from "@/lib/date-format";
 import { NextResponse } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { recomputeAppointmentStaffingStatus } from "@/lib/appointment-staffing";
+import { recomputeAppointmentStaffingStatus, setApplicationState } from "@/lib/appointment-staffing";
 import { getViewer } from "@/lib/viewer";
 import {
   appointmentApplications,
@@ -36,10 +37,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     columns: { id: true, title: true, startAt: true },
   });
 
-  await db
-    .update(appointmentApplications)
-    .set({ status: "CANCELLED", adminNote: note, role: "NORMAL", updatedAt: new Date() })
-    .where(and(eq(appointmentApplications.appointmentId, appointmentId), eq(appointmentApplications.userId, userId)));
+  if (!appointment) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  const previous = setApplicationState(appointmentId, userId, "CANCELLED", note);
+  if (!previous) return NextResponse.json({ ok: false, error: "application_not_found" }, { status: 404 });
 
   await recomputeAppointmentStaffingStatus(appointmentId);
 
@@ -57,7 +57,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   if (appointment) {
     const title = "Du wurdest aus einem Termin ausgetragen";
-    const when = new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt);
+    const when = dateFormatter({ dateStyle: "medium", timeStyle: "short" }).format(appointment.startAt);
     const bodyText = `${appointment.title}\n${when}${note ? `\n\nBemerkung: ${note}` : ""}`;
     await db.insert(notifications).values({
       scope: "USER",

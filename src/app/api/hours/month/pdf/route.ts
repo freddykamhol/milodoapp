@@ -1,3 +1,4 @@
+import { dateFormatter } from "@/lib/date-format";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 import { db } from "@/lib/db";
@@ -22,17 +23,17 @@ function pad2(n: number) {
 }
 
 function formatMonthTitle(year: number, month: number) {
-  return new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
+  return dateFormatter({ month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
 }
 
 function formatLocalDate(d: Date) {
-  return new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }).format(
+  return dateFormatter({ weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }).format(
     d,
   );
 }
 
 function formatLocalTime(d: Date) {
-  return new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(d);
+  return dateFormatter({ hour: "2-digit", minute: "2-digit" }).format(d);
 }
 
 function minutesLabel(minutes: number) {
